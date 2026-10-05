@@ -29,6 +29,10 @@ function App() {
   const syncStatus = useStore(state => state.syncStatus);
   const saveToCloud = useStore(state => state.saveToCloud);
   const loadFromCloud = useStore(state => state.loadFromCloud);
+  const activeLevel = useStore(state => state.activeLevel);
+  const searchQuery = useStore(state => state.searchQuery);
+  const setActiveLevel = useStore(state => state.setActiveLevel);
+  const setSearchQuery = useStore(state => state.setSearchQuery);
 
   return (
     <div className="flex h-screen w-screen bg-white text-slate-800 font-sans">
@@ -366,8 +370,8 @@ function App() {
                 <div className="flex gap-2 pointer-events-auto">
                   <select 
                     className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
-                    value={useStore(s => s.activeLevel) || 0}
-                    onChange={(e) => useStore.getState().setActiveLevel(Number(e.target.value))}
+                    value={activeLevel || 0}
+                    onChange={(e) => setActiveLevel(Number(e.target.value))}
                   >
                     <option value={0}>PB (Planta Baja)</option>
                     <option value={1}>PA (Planta Alta)</option>
@@ -382,8 +386,8 @@ function App() {
                       type="text" 
                       placeholder="Buscar Clave o Desc..."
                       className="bg-transparent border-none outline-none text-sm w-48"
-                      value={useStore(s => s.searchQuery)}
-                      onChange={(e) => useStore.getState().setSearchQuery(e.target.value)}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
                 </div>
