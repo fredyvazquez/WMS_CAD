@@ -1,0 +1,413 @@
+import React, { useRef, useState } from 'react';
+import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
+import { useStore } from '../store/useStore';
+
+export const LayoutEditor: React.FC = () => {
+  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode } = useStore();
+
+  const getRackStatusColor = (rack: any) => {
+    if (selectedShapeId === rack.id) return '#3b82f6'; // Selected Blue
+    if (!rack.cells || rack.cells.length === 0) return '#0f172a'; // Empty/Default Slate
+    
+    let hasRed = false, hasYellow = false, hasGreen = false;
+    let hasMatch = false;
+
+    rack.cells.forEach((cell: any) => {
+      if (cell.articleId) {
+        if (searchQuery && cell.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
+          hasMatch = true;
+        }
+        const art = articles.find(a => a.id === cell.articleId);
+        if (art) {
+          if (art.status === 'SCRAP' || art.status === 'DAMAGED') hasRed = true;
+          else if (art.status === 'SLOW' || art.status === 'OFFLINE') hasYellow = true;
+          else hasGreen = true;
+        }
+      }
+    });
+
+    if (searchQuery) {
+       // if searching, dim non-matching racks
+       if (!hasMatch) return '#cbd5e1'; // light slate
+       return '#a855f7'; // highlight purple for matches!
+    }
+
+    if (hasRed) return '#ef4444';
+    if (hasYellow) return '#facc15';
+    if (hasGreen) return '#22c55e';
+    
+    return rack.color || '#0f172a';
+  };
+
+  const branch = branches.find(b => b.id === activeBranchId);
+
+  const checkDeselect = (e: any) => {
+    // deselect when clicked on empty area
+    const clickedOnEmpty = e.target === e.target.getStage();
+    if (clickedOnEmpty) {
+      setSelectedShapeId(null);
+    }
+  };
+  const [stageScale, setStageScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 50, y: 50 }); // Start slightly offset to see room border
+
+  // Keyboard navigation
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't interfere with inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+
+      const PAN_STEP = 50;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setStagePos({ x: 50, y: 50 }); // Center/Reset
+        setStageScale(1);
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        setStagePos(p => ({ ...p, y: p.y + PAN_STEP }));
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        setStagePos(p => ({ ...p, y: p.y - PAN_STEP }));
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        setStagePos(p => ({ ...p, x: p.x + PAN_STEP }));
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        setStagePos(p => ({ ...p, x: p.x - PAN_STEP }));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const stage = e.target.getStage();
+    
+    // Pinch to zoom or Ctrl+Scroll
+    if (e.evt.ctrlKey || e.evt.metaKey) {
+      const scaleBy = 1.05;
+      const oldScale = stage.scaleX();
+      const mousePointTo = {
+        x: stage.getPointerPosition().x / oldScale - stage.x() / oldScale,
+        y: stage.getPointerPosition().y / oldScale - stage.y() / oldScale,
+      };
+
+      const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+      setStageScale(newScale);
+      setStagePos({
+        x: -(mousePointTo.x - stage.getPointerPosition().x / newScale) * newScale,
+        y: -(mousePointTo.y - stage.getPointerPosition().y / newScale) * newScale,
+      });
+    } else {
+      // Trackpad panning or normal mouse wheel panning
+      setStagePos(p => ({
+        x: p.x - e.evt.deltaX,
+        y: p.y - e.evt.deltaY
+      }));
+    }
+  };
+
+  const trRef = useRef<any>(null);
+  const layerRef = useRef<any>(null);
+
+  React.useEffect(() => {
+    if (isEditMode && selectedShapeId && trRef.current && layerRef.current) {
+      const node = layerRef.current.findOne(`#${selectedShapeId}`);
+      if (node && node.draggable()) {
+        trRef.current.nodes([node]);
+        trRef.current.getLayer().batchDraw();
+      }
+    } else if (trRef.current) {
+      trRef.current.nodes([]);
+    }
+  }, [selectedShapeId, isEditMode]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setDimensions({ width, height });
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  if (!branch) return <div className="p-4">Seleccione una sucursal</div>;
+
+  const GRID_SIZE = 50; // Visual grid
+  const SNAP_SIZE = 10; // Drag snap step
+  const snapToGrid = function(this: any, pos: any) {
+    if (!this || !this.getParent) return pos; // Fallback
+    // Convert proposed absolute pos to relative pos
+    const transform = this.getParent().getAbsoluteTransform().copy();
+    transform.invert();
+    const relativePos = transform.point(pos);
+    
+    // Snap relative position
+    const snappedRelX = Math.round(relativePos.x / SNAP_SIZE) * SNAP_SIZE;
+    const snappedRelY = Math.round(relativePos.y / SNAP_SIZE) * SNAP_SIZE;
+    
+    // Convert back to absolute
+    const absoluteTransform = this.getParent().getAbsoluteTransform();
+    return absoluteTransform.point({ x: snappedRelX, y: snappedRelY });
+  };
+
+  const branchWidth = branch.width || 2000;
+  const branchHeight = branch.height || 1500;
+  const gridLines = [];
+  for (let i = 0; i < branchWidth / GRID_SIZE; i++) {
+    gridLines.push(<Rect key={`v-${i}`} x={i * GRID_SIZE} y={0} width={1} height={branchHeight} fill="rgba(0,0,0,0.05)" listening={false} />);
+  }
+  for (let i = 0; i < branchHeight / GRID_SIZE; i++) {
+    gridLines.push(<Rect key={`h-${i}`} x={0} y={i * GRID_SIZE} width={branchWidth} height={1} fill="rgba(0,0,0,0.05)" listening={false} />);
+  }
+
+  return (
+    <div className="w-full h-full bg-slate-200 overflow-hidden outline-none" ref={containerRef} tabIndex={0}>
+      <Stage 
+        width={dimensions.width} 
+        height={dimensions.height} 
+        onMouseDown={checkDeselect}
+        onTouchStart={checkDeselect}
+        onWheel={handleWheel}
+        draggable
+        onDragEnd={(e) => {
+          if (e.target === e.target.getStage()) {
+             setStagePos({ x: e.target.x(), y: e.target.y() });
+          }
+        }}
+        scaleX={stageScale}
+        scaleY={stageScale}
+        x={stagePos.x}
+        y={stagePos.y}
+      >
+        <Layer ref={layerRef}>
+          {/* Terreno / Branch */}
+          <Rect
+            id="branch-bg"
+            x={0}
+            y={0}
+            width={branchWidth}
+            height={branchHeight}
+            fill="#e2e8f0"
+            stroke="#64748b"
+            strokeWidth={4}
+            listening={true}
+            onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(branch.id); }}
+          />
+          {gridLines}
+          <Text x={10} y={10} text={`Terreno: ${branch.name} (${branchWidth}x${branchHeight}cm)`} fontSize={24} fill="#475569" listening={false} />
+
+          {/* Rooms */}
+          {branch.rooms.map(room => (
+            <Group 
+              key={room.id} 
+              id={room.id} 
+              x={room.x || 50} 
+              y={room.y || 50} 
+              draggable={isEditMode && !room.isLocked} dragBoundFunc={snapToGrid}
+              onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
+              onDragEnd={(e) => {
+                e.cancelBubble = true;
+                if (e.target.id() === room.id) {
+                  useStore.getState().updateRoomPosition(branch.id, room.id, Math.round(e.target.x()), Math.round(e.target.y()));
+                }
+              }}
+              onTransform={(e) => {
+                const node = e.target;
+                if (node.id() === room.id) {
+                  const scaleX = node.scaleX();
+                  const scaleY = node.scaleY();
+                  node.scaleX(1);
+                  node.scaleY(1);
+                  const w = Math.round(Math.max(10, (room.width || 1000) * scaleX));
+                  const h = Math.round(Math.max(10, (room.height || 800) * scaleY));
+                  useStore.getState().updateRoomProperties(room.id, { width: w, height: h, x: node.x(), y: node.y() });
+                }
+              }}
+            >
+              <Rect
+                width={room.width || 1000}
+                height={room.height || 800}
+                fill={room.color || "#ffffff"}
+                opacity={0.6}
+                stroke={selectedShapeId === room.id ? "#3b82f6" : "#94a3b8"}
+                strokeWidth={selectedShapeId === room.id ? 4 : 2}
+                dash={[10, 10]}
+              />
+              <Text x={10} y={10} text={room.name} fontSize={20} fill="#64748b" />
+              {selectedShapeId === room.id && (
+                <Text x={10} y={35} text={`L: ${Math.round(room.width || 1000)}cm x F: ${Math.round(room.height || 800)}cm`} fontSize={14} fill="#2563eb" fontStyle="bold" />
+              )}
+              
+              {/* Areas */}
+              {room.areas.map(area => (
+                <Group 
+                  key={area.id} 
+                  id={area.id} 
+                  x={area.x} 
+                  y={area.y} 
+                  draggable={isEditMode && !area.isLocked} dragBoundFunc={snapToGrid}
+                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
+                  onDragEnd={(e) => {
+                    e.cancelBubble = true;
+                    if (e.target.id() === area.id) {
+                      useStore.getState().updateAreaPosition(branch.id, room.id, area.id, Math.round(e.target.x()), Math.round(e.target.y()));
+                    }
+                  }}
+                  onTransform={(e) => {
+                    const node = e.target;
+                    if (node.id() === area.id) {
+                      const scaleX = node.scaleX();
+                      const scaleY = node.scaleY();
+                      node.scaleX(1);
+                      node.scaleY(1);
+                      const w = Math.round(Math.max(10, area.width * scaleX));
+                      const h = Math.round(Math.max(10, area.height * scaleY));
+                      useStore.getState().updateAreaProperties(area.id, { width: w, height: h, x: node.x(), y: node.y() });
+                    }
+                  }}
+                >
+                  <Rect
+                    width={area.width}
+                    height={area.height}
+                    fill={area.color || "rgba(255, 255, 0, 0.2)"}
+                    opacity={0.6}
+                    stroke={selectedShapeId === area.id ? "#3b82f6" : "#cbd5e1"}
+                    strokeWidth={selectedShapeId === area.id ? 3 : 1}
+                    dash={[5, 5]}
+                  />
+                  <Text x={5} y={5} text={area.name} fontSize={16} fill="#475569" />
+                  {selectedShapeId === area.id && (
+                    <Text x={5} y={25} text={`L: ${Math.round(area.width)}cm x F: ${Math.round(area.height)}cm`} fontSize={14} fill="#2563eb" fontStyle="bold" />
+                  )}
+                  
+                  {/* Racks in Area */}
+                  {area.racks.map(rack => (
+                      <Group
+                        key={rack.id}
+                        id={rack.id}
+                        x={rack.x}
+                        y={rack.y}
+                        rotation={rack.rotation}
+                        draggable={isEditMode && !rack.isLocked} dragBoundFunc={snapToGrid}
+                        onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
+                        onDblClick={() => useStore.getState().setActiveRack(rack.id)}
+                        onDragEnd={(e) => {
+                          e.cancelBubble = true;
+                          if (e.target.id() === rack.id) {
+                            useStore.getState().updateRackPosition(branch.id, room.id, area.id, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                          }
+                        }}
+                        onTransform={(e) => {
+                          const node = e.target;
+                          const scaleX = node.scaleX();
+                          const scaleY = node.scaleY();
+                          node.scaleX(1);
+                          node.scaleY(1);
+                          const newWidth = Math.max(5, rack.width * scaleX);
+                          const newDepth = Math.max(5, rack.depth * scaleY);
+                          useStore.getState().updateRackProperties(rack.id, { 
+                            width: Math.round(newWidth), 
+                            depth: Math.round(newDepth),
+                            rotation: node.rotation(),
+                            x: Math.round(node.x()),
+                            y: Math.round(node.y())
+                          });
+                        }}
+                        onTransformEnd={(e) => {
+                          const node = e.target;
+                          useStore.getState().updateRackPosition(branch.id, room.id, area.id, rack.id, node.x(), node.y(), node.rotation());
+                        }}
+                      >
+                        <Rect
+                          width={rack.width}
+                          height={rack.depth}
+                          fill={getRackStatusColor(rack)}
+                        />
+                        <Text x={5} y={5} text={rack.name} fontSize={14} fill="#ffffff" />
+                        {selectedShapeId === rack.id && (
+                          <Text x={0} y={-20} text={`L: ${Math.round(rack.width)}cm x F: ${Math.round(rack.depth)}cm | Rot: ${Math.round(rack.rotation)}°`} fontSize={12} fill="#ef4444" fontStyle="bold" />
+                        )}
+                      </Group>
+                  ))}
+                </Group>
+              ))}
+
+              {/* Racks outside areas but in room */}
+              {room.racks.map(rack => (
+                 <Group
+                 key={rack.id}
+                 id={rack.id}
+                 x={rack.x}
+                 y={rack.y}
+                 rotation={rack.rotation}
+                 draggable={isEditMode && !rack.isLocked} dragBoundFunc={snapToGrid}
+                 onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
+                 onDblClick={() => useStore.getState().setActiveRack(rack.id)}
+                 onDragEnd={(e) => {
+                   e.cancelBubble = true;
+                   if (e.target.id() === rack.id) {
+                     useStore.getState().updateRackPosition(branch.id, room.id, null, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                   }
+                 }}
+                 onTransform={(e) => {
+                    const node = e.target;
+                    const scaleX = node.scaleX();
+                    const scaleY = node.scaleY();
+                    node.scaleX(1);
+                    node.scaleY(1);
+                    const newWidth = Math.max(5, rack.width * scaleX);
+                    const newDepth = Math.max(5, rack.depth * scaleY);
+                    useStore.getState().updateRackProperties(rack.id, { 
+                      width: Math.round(newWidth), 
+                      depth: Math.round(newDepth),
+                      rotation: node.rotation(),
+                      x: Math.round(node.x()),
+                      y: Math.round(node.y())
+                    });
+                 }}
+                 onTransformEnd={(e) => {
+                    const node = e.target;
+                    useStore.getState().updateRackPosition(branch.id, room.id, null, rack.id, node.x(), node.y(), node.rotation());
+                 }}
+               >
+                 <Rect
+                   width={rack.width}
+                   height={rack.depth}
+                   fill={getRackStatusColor(rack)}
+                 />
+                 <Text x={5} y={5} text={rack.name} fontSize={14} fill="#ffffff" />
+                 {selectedShapeId === rack.id && (
+                   <Text x={0} y={-20} text={`L: ${Math.round(rack.width)}cm x F: ${Math.round(rack.depth)}cm | Rot: ${Math.round(rack.rotation)}°`} fontSize={12} fill="#ef4444" fontStyle="bold" />
+                 )}
+               </Group>
+              ))}
+            </Group>
+          ))}
+          
+          <Transformer 
+            ref={trRef} 
+            boundBoxFunc={(oldBox, newBox) => {
+              if (newBox.width < SNAP_SIZE || newBox.height < SNAP_SIZE) {
+                return oldBox;
+              }
+              newBox.width = Math.round(newBox.width / SNAP_SIZE) * SNAP_SIZE;
+              newBox.height = Math.round(newBox.height / SNAP_SIZE) * SNAP_SIZE;
+              newBox.x = Math.round(newBox.x / SNAP_SIZE) * SNAP_SIZE;
+              newBox.y = Math.round(newBox.y / SNAP_SIZE) * SNAP_SIZE;
+              return newBox;
+            }}
+            keepRatio={false}
+            enabledAnchors={['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right']}
+            rotationSnaps={[0, 45, 90, 135, 180, 225, 270, 315]}
+          />
+        </Layer>
+      </Stage>
+    </div>
+  );
+};
