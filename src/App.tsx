@@ -436,22 +436,22 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {!(articles && articles.length > 0) ? (
+                  {!(Array.isArray(articles) && articles.length > 0) ? (
                     <tr>
                       <td colSpan={5} className="p-4 text-center text-slate-500">
                         No hay artículos cargados. Importe un archivo Excel.
                       </td>
                     </tr>
                   ) : (
-                    (articles || []).slice(0, 100).map(art => (
-                      <tr key={art?.id || Math.random()} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 text-sm">{art?.id}</td>
-                        <td className="p-3 text-sm truncate max-w-xs">{art?.description}</td>
-                        <td className="p-3 text-sm">{art?.stock?.['BODEGA LEON'] || 0}</td>
-                        <td className="p-3 text-sm">{art?.stock?.['CELAYA'] || 0}</td>
+                    articles.slice(0, 100).map((art: any) => (
+                      <tr key={String(art?.id || Math.random())} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 text-sm">{String(art?.id || '')}</td>
+                        <td className="p-3 text-sm truncate max-w-xs">{String(art?.description || '')}</td>
+                        <td className="p-3 text-sm">{String(art?.stock?.['BODEGA LEON'] || 0)}</td>
+                        <td className="p-3 text-sm">{String(art?.stock?.['CELAYA'] || 0)}</td>
                         <td className="p-3 text-sm">
                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                             {art?.status || 'N/A'}
+                             {String(art?.status || 'N/A')}
                            </span>
                         </td>
                       </tr>
@@ -459,7 +459,7 @@ function App() {
                   )}
                 </tbody>
               </table>
-              {(articles && articles.length > 100) && (
+              {(Array.isArray(articles) && articles.length > 100) && (
                 <div className="p-3 text-center text-sm text-slate-500">
                   Mostrando 100 de {articles.length} artículos...
                 </div>
