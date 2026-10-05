@@ -33,14 +33,17 @@ function App() {
   return (
     <div className="flex h-screen w-screen bg-white text-slate-800 font-sans">
       {/* Sidebar */}
-      <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-4 space-y-8">
+      <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-4 space-y-8 z-50">
         <button className="p-2 hover:bg-slate-800 rounded-lg" title="Mapa 2D" onClick={() => setView('LAYOUT')}>
           <Map size={24} />
         </button>
         <button className="p-2 hover:bg-slate-800 rounded-lg" title="Artículos" onClick={() => setView('DATA')}>
           <Package size={24} />
         </button>
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Buscador">
+        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Buscador" onClick={() => {
+          setView('LAYOUT');
+          setTimeout(() => document.getElementById('main-search-input')?.focus(), 100);
+        }}>
           <Search size={24} />
         </button>
         <div className="flex-grow"></div>
@@ -48,15 +51,25 @@ function App() {
           <button 
             className={`p-2 rounded-lg ${syncStatus === 'saving' ? 'animate-pulse text-blue-400' : syncStatus === 'saved' ? 'text-emerald-400' : 'hover:bg-slate-800'}`} 
             title="Guardar en la Nube" 
-            onClick={saveToCloud}
+            onClick={() => {
+              saveToCloud().then(() => {
+                if (useStore.getState().syncStatus === 'saved') {
+                  alert('¡Guardado en la nube exitoso!');
+                } else if (useStore.getState().syncStatus === 'error') {
+                  alert('No se pudo guardar. Verifica la conexión o configuración de la base de datos.');
+                }
+              });
+            }}
           >
             <CloudUpload size={24} />
           </button>
-          <button className="p-2 hover:bg-slate-800 rounded-lg" title="Cargar desde la Nube" onClick={loadFromCloud}>
+          <button className="p-2 hover:bg-slate-800 rounded-lg" title="Cargar desde la Nube" onClick={() => {
+            loadFromCloud().then(() => alert('¡Datos cargados desde la nube! (si había algo guardado)'));
+          }}>
             <CloudDownload size={24} />
           </button>
         </div>
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Configuración">
+        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Configuración" onClick={() => alert('La configuración estará disponible próximamente.')}>
           <Settings size={24} />
         </button>
       </div>
@@ -284,6 +297,20 @@ function App() {
                             />
                           </div>
                         </div>
+                        {selectedType === 'ROOM' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1 mt-1">Planta / Nivel</label>
+                            <select 
+                              className="w-full p-1 border border-slate-300 rounded text-sm"
+                              value={selectedData.level || 0} 
+                              onChange={e => updateProps({ level: Number(e.target.value) })}
+                            >
+                              <option value={0}>Planta Baja</option>
+                              <option value={1}>1er Piso (Planta Alta)</option>
+                              <option value={2}>2do Piso</option>
+                            </select>
+                          </div>
+                        )}
                         {(selectedType === 'AREA' || selectedType === 'ROOM') && (
                           <div className="flex items-center justify-between pt-2">
                              <span className="text-sm font-bold text-slate-600">Fijar Posición</span>
@@ -335,17 +362,30 @@ function App() {
                     <span className="w-3 h-3 rounded-full bg-red-500"></span> Basura/Chatarra
                   </div>
                 </div>
-                
-                {/* Search Bar */}
-                <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 flex items-center pointer-events-auto">
-                  <Search size={18} className="text-slate-400 mr-2" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar Clave..."
-                    className="bg-transparent border-none outline-none text-sm w-48"
-                    value={useStore(s => s.searchQuery)}
-                    onChange={(e) => useStore.getState().setSearchQuery(e.target.value)}
-                  />
+                {/* Right Side Controls */}
+                <div className="flex gap-2 pointer-events-auto">
+                  <select 
+                    className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                    value={useStore(s => s.activeLevel) || 0}
+                    onChange={(e) => useStore.getState().setActiveLevel(Number(e.target.value))}
+                  >
+                    <option value={0}>PB (Planta Baja)</option>
+                    <option value={1}>PA (Planta Alta)</option>
+                    <option value={2}>2do Piso</option>
+                  </select>
+
+                  {/* Search Bar */}
+                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 flex items-center">
+                    <Search size={18} className="text-slate-400 mr-2" />
+                    <input 
+                      id="main-search-input"
+                      type="text" 
+                      placeholder="Buscar Clave o Desc..."
+                      className="bg-transparent border-none outline-none text-sm w-48"
+                      value={useStore(s => s.searchQuery)}
+                      onChange={(e) => useStore.getState().setSearchQuery(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -396,22 +436,22 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {articles.length === 0 ? (
+                  {!(articles && articles.length > 0) ? (
                     <tr>
                       <td colSpan={5} className="p-4 text-center text-slate-500">
                         No hay artículos cargados. Importe un archivo Excel.
                       </td>
                     </tr>
                   ) : (
-                    articles.slice(0, 100).map(art => (
-                      <tr key={art.id} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 text-sm">{art.id}</td>
-                        <td className="p-3 text-sm truncate max-w-xs">{art.description}</td>
-                        <td className="p-3 text-sm">{art.stock['BODEGA LEON']}</td>
-                        <td className="p-3 text-sm">{art.stock['CELAYA']}</td>
+                    (articles || []).slice(0, 100).map(art => (
+                      <tr key={art?.id || Math.random()} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 text-sm">{art?.id}</td>
+                        <td className="p-3 text-sm truncate max-w-xs">{art?.description}</td>
+                        <td className="p-3 text-sm">{art?.stock?.['BODEGA LEON'] || 0}</td>
+                        <td className="p-3 text-sm">{art?.stock?.['CELAYA'] || 0}</td>
                         <td className="p-3 text-sm">
                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                             {art.status}
+                             {art?.status || 'N/A'}
                            </span>
                         </td>
                       </tr>
@@ -419,7 +459,7 @@ function App() {
                   )}
                 </tbody>
               </table>
-              {articles.length > 100 && (
+              {(articles && articles.length > 100) && (
                 <div className="p-3 text-center text-sm text-slate-500">
                   Mostrando 100 de {articles.length} artículos...
                 </div>

@@ -8,6 +8,7 @@ interface WMSStore extends LayoutState {
   setActiveBranch: (branchId: string | null) => void;
   setActiveRoom: (roomId: string | null) => void;
   setActiveRack: (rackId: string | null) => void;
+  setActiveLevel: (level: number) => void;
   setArticles: (articles: Article[]) => void;
   setSelectedShapeId: (id: string | null) => void;
   updateRackProperties: (rackId: string, updates: Partial<Rack>) => void;
@@ -15,6 +16,7 @@ interface WMSStore extends LayoutState {
   addRack: (branchId: string, roomId: string) => void;
   addRoom: (branchId: string) => void;
   assignArticleToCell: (rackId: string, row: number, col: number, articleId: string | null, quantity: number) => void;
+  updateCellItems: (rackId: string, row: number, col: number, items: import('../types').CellItem[]) => void;
   autoAssignDemo: () => void;
   setSearchQuery: (query: string) => void;
   setIsEditMode: (v: boolean) => void;
@@ -75,6 +77,7 @@ export const useStore = create<WMSStore>()(
   activeBranchId: 'b-1',
   activeRoomId: 'r-1',
   activeRackId: null,
+  activeLevel: 0,
   selectedShapeId: null,
   articles: [],
   searchQuery: '',
@@ -85,6 +88,7 @@ export const useStore = create<WMSStore>()(
   setActiveBranch: (activeBranchId) => set({ activeBranchId }),
   setActiveRoom: (activeRoomId) => set({ activeRoomId }),
   setActiveRack: (activeRackId) => set({ activeRackId }),
+  setActiveLevel: (activeLevel) => set({ activeLevel }),
   setSelectedShapeId: (selectedShapeId) => set({ selectedShapeId }),
   setArticles: (articles) => set({ articles }),
   autoAssignDemo: () => set((state) => {
@@ -221,11 +225,44 @@ export const useStore = create<WMSStore>()(
           if (!rack.cells) rack.cells = [];
           let cell = rack.cells.find(c => c.row === row && c.col === col);
           if (!cell) {
-            cell = { id: `${rack.id}-${row}-${col}`, row, col, articleId: null, quantity: 0 };
+            cell = { id: `${rack.id}-${row}-${col}`, row, col, articleId: null, quantity: 0, items: [] };
             rack.cells.push(cell);
           }
           cell.articleId = articleId;
           cell.quantity = quantity;
+          return { branches: newBranches };
+        }
+      }
+    }
+    return state;
+  }),
+  updateCellItems: (rackId: string, row: number, col: number, items: any[]) => set((state) => {
+    const newBranches = [...state.branches];
+    for (const b of newBranches) {
+      for (const r of b.rooms) {
+        let rack = r.racks.find(rack => rack.id === rackId);
+        if (!rack) {
+          for (const a of r.areas) {
+            rack = a.racks.find(rack => rack.id === rackId);
+            if (rack) break;
+          }
+        }
+        if (rack) {
+          if (!rack.cells) rack.cells = [];
+          let cell = rack.cells.find(c => c.row === row && c.col === col);
+          if (!cell) {
+            cell = { id: `${rack.id}-${row}-${col}`, row, col, articleId: null, quantity: 0, items: [] };
+            rack.cells.push(cell);
+          }
+          cell.items = items;
+          // Sync backward compat
+          if (items.length > 0) {
+             cell.articleId = items[0].articleId;
+             cell.quantity = items[0].quantity;
+          } else {
+             cell.articleId = null;
+             cell.quantity = 0;
+          }
           return { branches: newBranches };
         }
       }

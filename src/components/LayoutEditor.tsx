@@ -3,7 +3,7 @@ import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
 import { useStore } from '../store/useStore';
 
 export const LayoutEditor: React.FC = () => {
-  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode } = useStore();
+  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel } = useStore();
 
   const getRackStatusColor = (rack: any) => {
     if (selectedShapeId === rack.id) return '#3b82f6'; // Selected Blue
@@ -13,17 +13,24 @@ export const LayoutEditor: React.FC = () => {
     let hasMatch = false;
 
     rack.cells.forEach((cell: any) => {
-      if (cell.articleId) {
-        if (searchQuery && cell.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
-          hasMatch = true;
+      const items = cell.items && cell.items.length > 0 ? cell.items : (cell.articleId ? [{ articleId: cell.articleId }] : []);
+      
+      items.forEach((item: any) => {
+        if (item.articleId) {
+          if (searchQuery && item.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
+            hasMatch = true;
+          }
+          const art = articles.find(a => a.id === item.articleId);
+          if (art) {
+            if (searchQuery && art.description && art.description.toLowerCase().includes(searchQuery.toLowerCase())) {
+              hasMatch = true;
+            }
+            if (art.status === 'SCRAP' || art.status === 'DAMAGED') hasRed = true;
+            else if (art.status === 'SLOW' || art.status === 'OFFLINE') hasYellow = true;
+            else hasGreen = true;
+          }
         }
-        const art = articles.find(a => a.id === cell.articleId);
-        if (art) {
-          if (art.status === 'SCRAP' || art.status === 'DAMAGED') hasRed = true;
-          else if (art.status === 'SLOW' || art.status === 'OFFLINE') hasYellow = true;
-          else hasGreen = true;
-        }
-      }
+      });
     });
 
     if (searchQuery) {
@@ -203,7 +210,7 @@ export const LayoutEditor: React.FC = () => {
           <Text x={10} y={10} text={`Terreno: ${branch.name} (${branchWidth}x${branchHeight}cm)`} fontSize={24} fill="#475569" listening={false} />
 
           {/* Rooms */}
-          {branch.rooms.map(room => (
+          {branch.rooms.filter(room => (room.level || 0) === activeLevel).map(room => (
             <Group 
               key={room.id} 
               id={room.id} 

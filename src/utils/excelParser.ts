@@ -10,40 +10,84 @@ export const parseExcelData = async (file: File): Promise<Article[]> => {
         const data = e.target?.result;
         const workbook = XLSX.read(data, { type: 'array' });
         
-        // Assuming the first sheet is the one we need
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
-        // Convert to JSON
-        // We use header: 1 to get an array of arrays to handle custom formatting
-        // But since the markdown had a nice table, let's assume it has headers
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+        // Use header: 1 to get an array of arrays
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
         
         const articles: Article[] = [];
+        let isPipeSeparated = false;
         
-        // This is a basic mapping based on the provided columns:
-        // CLAVE, ESTATUS, DESCRIPCION, CELAYA, LEON, QRO, NOVOPARK, BODEGA LEON, BODEGA QRO, EXISTENCIA, ULTIMA REVISION
-        for (const row of jsonData) {
-          if (!row['CLAVE']) continue; // Skip empty rows
+        // Find header row to identify columns
+        let headerRowIndex = -1;
+        let headers: string[] = [];
+        
+        for (let i = 0; i < Math.min(10, rawData.length); i++) {
+          const row = rawData[i];
+          if (!row || row.length === 0) continue;
           
-          // Dummy logic to determine status
+          if (typeof row[0] === 'string' && row[0].includes('CLAVE|ESTATUS|DESCRIPCION')) {
+            isPipeSeparated = true;
+            headers = row[0].split('|');
+            headerRowIndex = i;
+            break;
+          } else if (row.includes('CLAVE') && row.includes('DESCRIPCION')) {
+            headers = row.map(h => String(h).trim());
+            headerRowIndex = i;
+            break;
+          }
+        }
+        
+        if (headerRowIndex === -1) {
+          throw new Error('No se pudo encontrar el encabezado con CLAVE y DESCRIPCION en el archivo.');
+        }
+        
+        const getIndex = (name: string) => headers.indexOf(name);
+        const idxClave = getIndex('CLAVE');
+        const idxEstatus = getIndex('ESTATUS');
+        const idxDesc = getIndex('DESCRIPCION');
+        const idxCelaya = getIndex('CELAYA');
+        const idxLeon = getIndex('LEON');
+        const idxQro = getIndex('QRO');
+        const idxNovopark = getIndex('NOVOPARK');
+        const idxBodegaLeon = getIndex('BODEGA LEON');
+        const idxBodegaQro = getIndex('BODEGA QRO');
+        const idxRevision = getIndex('ULTIMA REVISION');
+
+        for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+          let row = rawData[i];
+          if (!row || row.length === 0) continue;
+          
+          let values: string[] = [];
+          if (isPipeSeparated) {
+            if (typeof row[0] !== 'string') continue;
+            values = row[0].split('|');
+          } else {
+            values = row.map(String);
+          }
+          
+          const clave = values[idxClave]?.trim();
+          if (!clave) continue;
+          
           let status: MaterialStatus = 'ACTIVE';
-          if (row['ESTATUS'] === '*') status = 'OFFLINE';
-          // More logic needed based on user requirements
+          const estatusVal = values[idxEstatus]?.trim();
+          if (estatusVal === '*') status = 'OFFLINE';
+          else if (estatusVal === 'D') status = 'DAMAGED'; // just in case
           
           articles.push({
-            id: String(row['CLAVE']),
+            id: clave,
             status: status,
-            description: String(row['DESCRIPCION'] || ''),
+            description: values[idxDesc]?.trim() || '',
             stock: {
-              'CELAYA': Number(row['CELAYA']) || 0,
-              'LEON': Number(row['LEON']) || 0,
-              'QRO': Number(row['QRO']) || 0,
-              'NOVOPARK': Number(row['NOVOPARK']) || 0,
-              'BODEGA LEON': Number(row['BODEGA LEON']) || 0,
-              'BODEGA QRO': Number(row['BODEGA QRO']) || 0,
+              'CELAYA': Number(values[idxCelaya]) || 0,
+              'LEON': Number(values[idxLeon]) || 0,
+              'QRO': Number(values[idxQro]) || 0,
+              'NOVOPARK': Number(values[idxNovopark]) || 0,
+              'BODEGA LEON': Number(values[idxBodegaLeon]) || 0,
+              'BODEGA QRO': Number(values[idxBodegaQro]) || 0,
             },
-            lastRevision: row['ULTIMA REVISION'],
+            lastRevision: values[idxRevision]?.trim(),
           });
         }
         

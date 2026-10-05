@@ -11,12 +11,19 @@ export interface Article {
   lastRevision?: string;
 }
 
+export interface CellItem {
+  id: string;
+  articleId: string;
+  quantity: number;
+}
+
 export interface Cell {
   id: string;
   row: number;
   col: number;
-  articleId: string | null;
+  articleId: string | null; // Keep for backward compatibility or simple mode
   quantity: number;
+  items?: CellItem[]; // For multiple subdivisions
 }
 
 export interface Rack {
@@ -50,6 +57,7 @@ export interface Area {
 export interface Room {
   id: string;
   name: string;
+  level?: number; // 0 = PB, 1 = PA, etc
   x: number;
   y: number;
   width: number;
@@ -73,6 +81,7 @@ export interface LayoutState {
   activeBranchId: string | null;
   activeRoomId: string | null;
   activeRackId: string | null;
+  activeLevel: number;
   selectedShapeId: string | null;
   articles: Article[];
   searchQuery: string;
