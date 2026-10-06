@@ -464,7 +464,7 @@ function App() {
                 });
 
                 return (
-                  <div className={`absolute right-4 bottom-4 md:top-20 w-64 ${isRackPanelMinimized ? 'h-auto' : 'max-h-48 md:max-h-none'} bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300`}>
+                  <div className={`absolute right-4 bottom-4 md:bottom-auto md:top-20 w-64 ${isRackPanelMinimized ? 'h-auto' : 'max-h-64 md:max-h-[calc(100vh-6rem)]'} bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300`}>
                     <div className="bg-slate-800 text-white p-2 md:p-3 font-bold text-sm flex justify-between items-center shadow-sm cursor-pointer" onClick={() => setIsRackPanelMinimized(!isRackPanelMinimized)}>
                       <span className="truncate pr-2">Caja: {rack.name}</span>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -483,7 +483,10 @@ function App() {
                               <button 
                                 key={code} 
                                 className={`w-full text-left text-xs md:text-sm border px-2 py-1 rounded md:rounded-lg font-mono shadow-sm truncate cursor-pointer transition-colors ${isMatch ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200'}`}
-                                onClick={() => useStore.getState().setActiveRack(rack.id)}
+                                onClick={() => { 
+                                  setSearchQuery(code);
+                                  useStore.getState().setActiveRack(rack.id); 
+                                }}
                                 title="Abrir vista frontal"
                               >
                                 {code}

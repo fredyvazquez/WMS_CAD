@@ -10,6 +10,41 @@ export const RackFrontalView: React.FC = () => {
   // For the active edit form of an item inside the selected cell
   const [editingItem, setEditingItem] = useState<{id: string, articleId: string, quantity: number} | null>(null);
 
+  React.useEffect(() => {
+    if (!searchQuery) return;
+    const branch = branches.find(b => b.id === activeBranchId);
+    const room = branch?.rooms.find(r => r.id === activeRoomId);
+    let rack: any;
+    if (room) {
+      for (const area of room.areas) {
+        rack = area.racks.find(r => r.id === activeRackId);
+        if (rack) break;
+      }
+      if (!rack) rack = room.racks.find(r => r.id === activeRackId);
+    }
+    if (!rack) return;
+
+    let foundMatch = false;
+    for (let rIndex = 0; rIndex < rack.levels; rIndex++) {
+      for (let cIndex = 0; cIndex < rack.columns; cIndex++) {
+        const cell = rack.cells?.find((c: any) => c.row === rIndex && c.col === cIndex);
+        if (!cell) continue;
+        const cellItems = cell.items && cell.items.length > 0 ? cell.items : (cell.articleId ? [{id: Date.now().toString(), articleId: cell.articleId, quantity: cell.quantity || 1}] : []);
+        const hasMatch = cellItems.some((i: any) => {
+          const a = articles.find((x: any) => x.id === i.articleId);
+          return i.articleId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (a && a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()));
+        });
+        if (hasMatch) {
+          setSelectedCell({ row: rIndex, col: cIndex, items: cellItems });
+          foundMatch = true;
+          break;
+        }
+      }
+      if (foundMatch) break;
+    }
+  }, [searchQuery, activeRackId]);
+
   if (!activeRackId) return null;
 
   const branch = branches.find(b => b.id === activeBranchId);
