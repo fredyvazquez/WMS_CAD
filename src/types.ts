@@ -76,7 +76,9 @@ export interface Branch {
   rooms: Room[];
 }
 
-export type UserRole = 'ALMACEN' | 'VENTAS' | null;
+export type UserRole = 'ADMIN' | 'ALMACEN' | 'VENTAS' | null;
+
+export type ViewMode = 'DEFAULT' | 'HEATMAP' | 'EMPTY' | 'UNKNOWN' | 'DISABLED';
 
 export interface LayoutState {
   branches: Branch[];
@@ -89,6 +91,7 @@ export interface LayoutState {
   searchQuery: string;
   isEditMode: boolean;
   currentUserRole: UserRole;
+  viewMode: ViewMode;
 }
 
 export interface InventoryRecord {

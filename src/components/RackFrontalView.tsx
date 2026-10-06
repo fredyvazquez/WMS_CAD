@@ -1,10 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
+import { useAnalyzerStore } from '../store/useAnalyzerStore';
 import { X, Save, Plus, Trash2 } from 'lucide-react';
 
+// Helper to get color between blue (cold) and red (hot)
+const getCellHeatmapColor = (value: number, max: number) => {
+  if (max === 0 || value === 0) return 'bg-blue-300 border-blue-400';
+  const ratio = Math.min(1, value / max);
+  if (ratio < 0.2) return 'bg-cyan-300 border-cyan-400';
+  if (ratio < 0.5) return 'bg-green-300 border-green-400';
+  if (ratio < 0.8) return 'bg-yellow-300 border-yellow-400';
+  if (ratio < 0.95) return 'bg-orange-400 border-orange-500 text-white';
+  return 'bg-red-500 border-red-600 text-white';
+};
+
 export const RackFrontalView: React.FC = () => {
-  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery, currentUserRole } = useStore();
+  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery, currentUserRole, viewMode } = useStore();
   const isVentas = currentUserRole === 'VENTAS';
+  const inventoryRecords = useAnalyzerStore(state => state.inventoryRecords);
+
+  const maxExits = useMemo(() => {
+    return inventoryRecords.reduce((max, r) => Math.max(max, r.exits || 0), 0);
+  }, [inventoryRecords]);
+
   const [selectedCell, setSelectedCell] = useState<{row: number, col: number, items: {id: string, articleId: string, quantity: number}[]} | null>(null);
 
   // For the active edit form of an item inside the selected cell
@@ -128,36 +146,73 @@ export const RackFrontalView: React.FC = () => {
                     cellItems = [{ id: 'legacy', articleId: cell.articleId, quantity: cell.quantity || 0 }];
                   }
 
-                  let cellColor = "bg-slate-50";
+                  let cellColor = "bg-slate-50 border-slate-200";
                   let text = "Vacío";
                   let hasMatch = false;
                   
                   if (cellItems.length > 0) {
                      const firstItem = cellItems[0];
-                     const art = useStore.getState().articles.find((a: any) => a.id === firstItem.articleId);
                      text = cellItems.length > 1 ? `Múltiples (${cellItems.length})` : firstItem.articleId;
                      
-                     if (searchQuery) {
-                       hasMatch = cellItems.some((i: any) => {
-                         const a = useStore.getState().articles.find((x: any) => x.id === i.articleId);
-                         return i.articleId.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                               (a && a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()));
-                       });
-                     }
+                     let hasRed = false, hasYellow = false, hasGreen = false, hasUnknown = false;
+                     let maxCellExits = 0;
+
+                     cellItems.forEach((i: any) => {
+                        const a = useStore.getState().articles.find((x: any) => x.id === i.articleId);
+                        if (searchQuery) {
+                           if (i.articleId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              (a && a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()))) {
+                              hasMatch = true;
+                           }
+                        }
+                        
+                        if (viewMode === 'HEATMAP') {
+                           const record = inventoryRecords.find(r => r.id === i.articleId);
+                           if (record) {
+                              maxCellExits = Math.max(maxCellExits, record.exits || 0);
+                           }
+                        }
+
+                        if (a) {
+                           if (a.status === 'SCRAP' || a.status === 'DAMAGED') hasRed = true;
+                           else if (a.status === 'SLOW' || a.status === 'OFFLINE') hasYellow = true;
+                           else hasGreen = true;
+                        } else {
+                           hasUnknown = true;
+                        }
+                     });
 
                      if (hasMatch) {
-                        cellColor = 'bg-purple-500 border-purple-700 text-white';
+                        cellColor = 'bg-purple-500 border-purple-700 text-white shadow-lg shadow-purple-500/50';
                      } else if (searchQuery) {
                         cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dim non-matches
-                     } else if (art) {
-                        if (art.status === 'SCRAP' || art.status === 'DAMAGED') cellColor = 'bg-red-200 border-red-400';
-                        else if (art.status === 'SLOW' || art.status === 'OFFLINE') cellColor = 'bg-yellow-200 border-yellow-400';
-                        else cellColor = 'bg-green-200 border-green-400';
+                     } else if (viewMode === 'DISABLED') {
+                        cellColor = 'bg-slate-200 border-slate-300';
+                     } else if (viewMode === 'EMPTY') {
+                        cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dimmed because it's not empty
+                     } else if (viewMode === 'UNKNOWN') {
+                        cellColor = hasUnknown ? 'bg-cyan-200 border-cyan-400' : 'bg-slate-200 border-slate-300 opacity-50';
+                     } else if (viewMode === 'HEATMAP') {
+                        cellColor = getCellHeatmapColor(maxCellExits, maxExits);
                      } else {
-                        cellColor = 'bg-blue-200 border-blue-400'; // Unknown status
+                        // DEFAULT MODE
+                        if (hasRed) {
+                           cellColor = 'bg-red-200 border-red-400';
+                        } else if (hasYellow) {
+                           cellColor = 'bg-yellow-200 border-yellow-400';
+                        } else if (hasUnknown) {
+                           cellColor = 'bg-cyan-200 border-cyan-400';
+                        } else if (hasGreen) {
+                           cellColor = 'bg-green-200 border-green-400';
+                        }
                      }
-                  } else if (searchQuery) {
-                     cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dim empty if searching
+                  } else {
+                     // Empty cell
+                     if (searchQuery) {
+                        cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dim empty if searching
+                     } else if (viewMode === 'EMPTY') {
+                        cellColor = 'bg-green-200 border-green-400 shadow-inner'; // Highlight empty
+                     }
                   }
                   
                   const cellId = `${rack?.id}-r${rIndex}-c${cIndex}`;

@@ -1,26 +1,54 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
 import { useStore } from '../store/useStore';
+import { useAnalyzerStore } from '../store/useAnalyzerStore';
+
+// Helper to get color between blue (cold) and red (hot)
+const getHeatmapColor = (value: number, max: number) => {
+  if (max === 0 || value === 0) return '#3b82f6'; // blue-500
+  const ratio = Math.min(1, value / max);
+  // Blue -> Cyan -> Green -> Yellow -> Red
+  const hue = ((1 - ratio) * 240).toString(10);
+  return `hsl(${hue}, 100%, 50%)`;
+};
 
 export const LayoutEditor: React.FC = () => {
-  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel, currentUserRole } = useStore();
-  const isVentas = currentUserRole === 'VENTAS';
+  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel, currentUserRole, viewMode } = useStore();
+  const isAdmin = currentUserRole === 'ADMIN';
+  const inventoryRecords = useAnalyzerStore(state => state.inventoryRecords);
+
+  const maxExits = useMemo(() => {
+    return inventoryRecords.reduce((max, r) => Math.max(max, r.exits || 0), 0);
+  }, [inventoryRecords]);
 
   const getRackStatusColor = (rack: any) => {
     if (selectedShapeId === rack.id) return '#3b82f6'; // Selected Blue
-    if (!rack.cells || rack.cells.length === 0) return '#0f172a'; // Empty/Default Slate
+    if (!rack.cells || rack.cells.length === 0) {
+       return viewMode === 'EMPTY' ? '#22c55e' : '#0f172a'; // Green if searching empty, else Slate
+    }
     
-    let hasRed = false, hasYellow = false, hasGreen = false;
+    let hasRed = false, hasYellow = false, hasGreen = false, hasUnknown = false;
     let hasMatch = false;
+    let isEmpty = true;
+    let maxRackExits = 0;
 
     rack.cells.forEach((cell: any) => {
       const items = cell.items && cell.items.length > 0 ? cell.items : (cell.articleId ? [{ articleId: cell.articleId }] : []);
+      if (items.length > 0) isEmpty = false;
       
       items.forEach((item: any) => {
         if (item.articleId) {
           if (searchQuery && item.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
             hasMatch = true;
           }
+          
+          if (viewMode === 'HEATMAP') {
+            const record = inventoryRecords.find(r => r.id === item.articleId);
+            if (record) {
+               maxRackExits = Math.max(maxRackExits, record.exits || 0);
+            }
+          }
+
           const art = articles.find(a => a.id === item.articleId);
           if (art) {
             if (searchQuery && art.description && art.description.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -29,19 +57,37 @@ export const LayoutEditor: React.FC = () => {
             if (art.status === 'SCRAP' || art.status === 'DAMAGED') hasRed = true;
             else if (art.status === 'SLOW' || art.status === 'OFFLINE') hasYellow = true;
             else hasGreen = true;
+          } else {
+            hasUnknown = true;
           }
         }
       });
     });
 
     if (searchQuery) {
-       // if searching, dim non-matching racks
        if (!hasMatch) return '#cbd5e1'; // light slate
        return '#a855f7'; // highlight purple for matches!
     }
 
+    if (viewMode === 'DISABLED') return rack.color || '#0f172a';
+    
+    if (viewMode === 'EMPTY') {
+       return isEmpty ? '#22c55e' : '#cbd5e1'; // Green if empty, else dimmed
+    }
+    
+    if (viewMode === 'UNKNOWN') {
+       return hasUnknown ? '#06b6d4' : '#cbd5e1'; // Cyan if unknown, else dimmed
+    }
+    
+    if (viewMode === 'HEATMAP') {
+       if (isEmpty) return '#cbd5e1';
+       return getHeatmapColor(maxRackExits, maxExits);
+    }
+
+    // DEFAULT MODE
     if (hasRed) return '#ef4444';
     if (hasYellow) return '#facc15';
+    if (hasUnknown) return '#06b6d4';
     if (hasGreen) return '#22c55e';
     
     return rack.color || '#0f172a';
@@ -215,7 +261,7 @@ export const LayoutEditor: React.FC = () => {
   const layerRef = useRef<any>(null);
 
   React.useEffect(() => {
-    if (isEditMode && !isVentas && selectedShapeId && trRef.current && layerRef.current) {
+    if (isEditMode && isAdmin && selectedShapeId && trRef.current && layerRef.current) {
       const node = layerRef.current.findOne(`#${selectedShapeId}`);
       if (node && node.draggable()) {
         trRef.current.nodes([node]);
@@ -224,7 +270,7 @@ export const LayoutEditor: React.FC = () => {
     } else if (trRef.current) {
       trRef.current.nodes([]);
     }
-  }, [selectedShapeId, isEditMode, isVentas]);
+  }, [selectedShapeId, isEditMode, isAdmin]);
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -314,7 +360,7 @@ export const LayoutEditor: React.FC = () => {
               id={room.id} 
               x={room.x || 50} 
               y={room.y || 50} 
-              draggable={isEditMode && !isVentas && !room.isLocked} dragBoundFunc={snapToGrid}
+              draggable={isEditMode && isAdmin && !room.isLocked} dragBoundFunc={snapToGrid}
               onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onDragEnd={(e) => {
@@ -357,7 +403,7 @@ export const LayoutEditor: React.FC = () => {
                   id={area.id} 
                   x={area.x} 
                   y={area.y} 
-                  draggable={isEditMode && !isVentas && !area.isLocked} dragBoundFunc={snapToGrid}
+                  draggable={isEditMode && isAdmin && !area.isLocked} dragBoundFunc={snapToGrid}
                   onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
                   onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
                   onDragEnd={(e) => {
@@ -401,7 +447,7 @@ export const LayoutEditor: React.FC = () => {
                         x={rack.x}
                         y={rack.y}
                         rotation={rack.rotation}
-                        draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
+                        draggable={isEditMode && isAdmin && !rack.isLocked} dragBoundFunc={snapToGrid}
                         onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                         onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                         onDblClick={() => useStore.getState().setActiveRack(rack.id)}
@@ -455,7 +501,7 @@ export const LayoutEditor: React.FC = () => {
                  x={rack.x}
                  y={rack.y}
                  rotation={rack.rotation}
-                 draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
+                 draggable={isEditMode && isAdmin && !rack.isLocked} dragBoundFunc={snapToGrid}
                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onDblClick={() => useStore.getState().setActiveRack(rack.id)}

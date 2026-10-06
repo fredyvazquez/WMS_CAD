@@ -7,7 +7,7 @@ import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudD
 
 function App() {
   const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
-  const [showPanel, setShowPanel] = useState(false);
+  const [showPanel, setShowPanel] = useState(window.innerWidth >= 768);
   const articles = useStore(state => state.articles);
   const branches = useStore(state => state.branches);
   const activeBranchId = useStore(state => state.activeBranchId);
@@ -37,6 +37,8 @@ function App() {
   const setSearchQuery = useStore(state => state.setSearchQuery);
   const currentUserRole = useStore(state => state.currentUserRole);
   const setCurrentUserRole = useStore(state => state.setCurrentUserRole);
+  const viewMode = useStore(state => state.viewMode);
+  const setViewMode = useStore(state => state.setViewMode);
   
   const [passwordInput, setPasswordInput] = useState('');
   const [isRackPanelMinimized, setIsRackPanelMinimized] = useState(false);
@@ -55,7 +57,8 @@ function App() {
             onChange={e => setPasswordInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') {
-                if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
+                if (passwordInput === 'admin123') setCurrentUserRole('ADMIN');
+                else if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
                 else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
                 else alert('Contraseña incorrecta');
               }
@@ -65,7 +68,8 @@ function App() {
             <button 
               className="flex-1 bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700"
               onClick={() => {
-                if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
+                if (passwordInput === 'admin123') setCurrentUserRole('ADMIN');
+                else if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
                 else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
                 else alert('Contraseña incorrecta');
               }}
@@ -73,13 +77,14 @@ function App() {
               Ingresar
             </button>
           </div>
-          <p className="text-xs text-slate-400 mt-4 text-center">Contraseñas por defecto: almacen123 / ventas123</p>
+          <p className="text-xs text-slate-400 mt-4 text-center">admin123 / almacen123 / ventas123</p>
         </div>
       </div>
     );
   }
 
   const isVentas = currentUserRole === 'VENTAS';
+  const isAdmin = currentUserRole === 'ADMIN';
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-white text-slate-800 font-sans overflow-hidden">
@@ -88,7 +93,7 @@ function App() {
         <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'LAYOUT' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Mapa 2D" onClick={() => setView('LAYOUT')}>
           <Map size={24} />
         </button>
-        {!isVentas && (
+        {isAdmin && (
           <>
             <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos" onClick={() => setView('DATA')}>
               <Package size={24} />
@@ -104,6 +109,11 @@ function App() {
         }}>
           <Search size={24} />
         </button>
+        {view === 'LAYOUT' && (
+          <button className={`hidden md:block p-2 rounded-lg flex-shrink-0 hover:bg-slate-800 ${showPanel ? 'text-blue-400' : 'text-slate-400'}`} title="Mostrar/Ocultar Panel Lateral" onClick={() => setShowPanel(!showPanel)}>
+            <Layers size={24} />
+          </button>
+        )}
         <div className="hidden md:block flex-grow"></div>
         <div className="flex flex-row md:flex-col gap-2 md:mb-4 md:border-b md:border-slate-700 md:pb-4 border-l md:border-l-0 pl-2 md:pl-0 border-slate-700">
           {!isVentas && (
@@ -149,12 +159,12 @@ function App() {
             </button>
             
             {/* Context Panel */}
-            <div className={`absolute md:relative z-40 h-full bg-slate-50 border-r border-slate-200 p-3 flex flex-col overflow-y-auto w-72 md:w-80 transform transition-transform duration-300 ${showPanel ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+            <div className={`absolute md:relative z-40 h-full bg-slate-50 flex flex-col overflow-y-auto w-72 md:w-80 transform transition-all duration-300 ${showPanel ? 'translate-x-0 border-r border-slate-200 p-3' : '-translate-x-full md:translate-x-0 md:-ml-80 border-r-0 p-3 md:p-0'}`}>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Layers size={20} /> Estructura
                 </h2>
-                {!isVentas && (
+                {isAdmin && (
                   <button 
                     onClick={() => setIsEditMode(!isEditMode)}
                     className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-colors ${
@@ -202,7 +212,7 @@ function App() {
                 </select>
               </div>
 
-              {!isVentas && (
+              {isAdmin && (
                 <>
                   <div className="mt-2 border-t border-slate-200 pt-2">
                     <h3 className="text-sm font-bold mb-2">Herramientas</h3>
@@ -503,18 +513,52 @@ function App() {
               {/* Overlay Top Bar */}
               <div className="absolute top-4 left-4 right-4 flex flex-col md:flex-row justify-between pointer-events-none gap-2 z-30">
                 <div className="hidden md:flex bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 gap-4 text-sm font-medium text-slate-600 pointer-events-auto">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-green-500"></span> Activo
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-yellow-400"></span> Lento/Revisión
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-red-500"></span> Basura/Chatarra
-                  </div>
+                  {viewMode === 'DEFAULT' && (
+                    <>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500"></span> Activo</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400"></span> Lento</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span> Basura</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-cyan-500"></span> Sin datos</div>
+                    </>
+                  )}
+                  {viewMode === 'HEATMAP' && (
+                    <>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500"></span> Frío (0 mov)</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-orange-400"></span> Tibio</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-600"></span> Caliente (Max)</div>
+                    </>
+                  )}
+                  {viewMode === 'EMPTY' && (
+                    <>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500"></span> Espacio Vacío</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-slate-300"></span> Ocupado</div>
+                    </>
+                  )}
+                  {viewMode === 'UNKNOWN' && (
+                    <>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-cyan-500"></span> Código sin Descripción</div>
+                      <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-slate-300"></span> Con Datos / Vacío</div>
+                    </>
+                  )}
+                  {viewMode === 'DISABLED' && (
+                    <div className="flex items-center gap-2 text-slate-400 italic">Colores deshabilitados</div>
+                  )}
                 </div>
                 {/* Right Side Controls */}
                 <div className="flex gap-2 pointer-events-auto w-full md:w-auto justify-between md:justify-end">
+                  {!isVentas && (
+                    <select 
+                      className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                      value={viewMode}
+                      onChange={(e) => setViewMode(e.target.value as any)}
+                    >
+                      <option value="DEFAULT">Modo: Estándar</option>
+                      <option value="HEATMAP">Modo: Movimientos (Calor)</option>
+                      <option value="EMPTY">Filtro: Espacios Vacíos</option>
+                      <option value="UNKNOWN">Filtro: Desconocidos</option>
+                      <option value="DISABLED">Deshabilitar Colores</option>
+                    </select>
+                  )}
                   <select 
                     className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none"
                     value={activeLevel || 0}
