@@ -3,7 +3,8 @@ import { useStore } from '../store/useStore';
 import { X, Save, Plus, Trash2 } from 'lucide-react';
 
 export const RackFrontalView: React.FC = () => {
-  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery } = useStore();
+  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery, currentUserRole } = useStore();
+  const isVentas = currentUserRole === 'VENTAS';
   const [selectedCell, setSelectedCell] = useState<{row: number, col: number, items: {id: string, articleId: string, quantity: number}[]} | null>(null);
 
   // For the active edit form of an item inside the selected cell
@@ -180,13 +181,25 @@ export const RackFrontalView: React.FC = () => {
                       return (
                         <div key={item.id} className="p-2 border border-slate-200 rounded-lg bg-slate-50 flex flex-col gap-1 relative group">
                           <div className="flex justify-between items-start">
-                            <span className="font-bold text-sm truncate pr-6">{item.articleId}</span>
-                            <button 
-                              className="text-red-400 hover:text-red-600 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleDeleteSubdivision(item.id)}
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <span className="font-bold text-sm truncate pr-12">{item.articleId}</span>
+                            {!isVentas && (
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-slate-50 pl-2">
+                                <button 
+                                  className="text-blue-500 hover:text-blue-700 bg-white shadow-sm p-1 rounded"
+                                  onClick={() => setEditingItem(item)}
+                                  title="Editar"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                </button>
+                                <button 
+                                  className="text-red-500 hover:text-red-700 bg-white shadow-sm p-1 rounded"
+                                  onClick={() => handleDeleteSubdivision(item.id)}
+                                  title="Eliminar"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <span className="text-xs text-slate-500 truncate">{art?.description || 'Desconocido'}</span>
                           <div className="text-xs font-semibold text-blue-600 mt-1">Cantidad: {item.quantity}</div>
@@ -197,66 +210,82 @@ export const RackFrontalView: React.FC = () => {
                 )}
 
                 {/* Edit Form */}
-                <div className="border-t border-slate-200 pt-3 mt-2">
-                  <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1">
-                    <Plus size={14} /> Agregar / Editar Artículo
-                  </h4>
-                  
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <label className="block text-xs text-slate-500 mb-1">Clave de Artículo</label>
-                      <input 
-                        type="text"
-                        placeholder="Buscar clave o descripción..."
-                        className="p-2 border border-slate-300 rounded text-sm w-full"
-                        value={editingItem?.articleId || ''}
-                        onChange={(e) => setEditingItem({...editingItem, id: editingItem?.id || Date.now().toString(), articleId: e.target.value, quantity: editingItem?.quantity || 1})}
-                        list="article-search-list"
-                      />
-                      <datalist id="article-search-list">
-                        {articles.map(a => (
-                          <option key={a.id} value={a.id}>{a.description.substring(0,50)}</option>
-                        ))}
-                      </datalist>
-                      {editingItem?.articleId && articles.find(a => a.id === editingItem.articleId) && (
-                        <div className="mt-1 text-xs text-green-700 bg-green-50 p-1.5 rounded border border-green-200 shadow-sm leading-tight">
-                          {articles.find(a => a.id === editingItem.articleId)?.description}
-                        </div>
-                      )}
-                    </div>
+                {!isVentas && (
+                  <div className="border-t border-slate-200 pt-3 mt-2">
+                    <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1">
+                      <Plus size={14} /> Agregar / Editar Artículo
+                    </h4>
                     
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Cantidad</label>
-                      <input 
-                        type="number" 
-                        className="p-2 border border-slate-300 rounded text-sm w-full"
-                        value={editingItem?.quantity || ''}
-                        onChange={(e) => setEditingItem({...editingItem, id: editingItem?.id || Date.now().toString(), articleId: editingItem?.articleId || '', quantity: Number(e.target.value)})}
-                      />
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <label className="block text-xs text-slate-500 mb-1">Clave de Artículo</label>
+                        <input 
+                          type="text"
+                          placeholder="Buscar clave o descripción..."
+                          className="p-2 border border-slate-300 rounded text-sm w-full"
+                          value={editingItem?.articleId || ''}
+                          onChange={(e) => setEditingItem({...editingItem, id: editingItem?.id || Date.now().toString(), articleId: e.target.value, quantity: editingItem?.quantity || 1})}
+                          list="article-search-list"
+                        />
+                        <datalist id="article-search-list">
+                          {articles.map(a => (
+                            <option key={a.id} value={a.id}>{a.description.substring(0,50)}</option>
+                          ))}
+                        </datalist>
+                        {editingItem?.articleId && articles.find(a => a.id === editingItem.articleId) && (
+                          <div className="mt-1 text-xs text-green-700 bg-green-50 p-1.5 rounded border border-green-200 shadow-sm leading-tight">
+                            {articles.find(a => a.id === editingItem.articleId)?.description}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Cantidad</label>
+                        <input 
+                          type="number" 
+                          className="p-2 border border-slate-300 rounded text-sm w-full"
+                          value={editingItem?.quantity || ''}
+                          onChange={(e) => setEditingItem({...editingItem, id: editingItem?.id || Date.now().toString(), articleId: editingItem?.articleId || '', quantity: Number(e.target.value)})}
+                        />
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        {editingItem?.id && selectedCell.items.some(i => i.id === editingItem.id) && (
+                          <button 
+                            className="flex-1 bg-slate-200 text-slate-700 px-4 py-2 rounded shadow hover:bg-slate-300 text-sm font-medium flex items-center justify-center"
+                            onClick={() => setEditingItem(null)}
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                        <button 
+                          className="flex-1 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2"
+                          onClick={handleSaveSubdivision}
+                          disabled={!editingItem?.articleId}
+                        >
+                          <Save size={16} /> Guardar
+                        </button>
+                      </div>
                     </div>
-                    
-                    <button 
-                      className="w-full bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2"
-                      onClick={handleSaveSubdivision}
-                      disabled={!editingItem?.articleId}
-                    >
-                      <Save size={16} /> Guardar
-                    </button>
                   </div>
-                </div>
+                )}
 
               </div>
-              <div className="p-3 border-t border-slate-200 bg-slate-50">
-                <button 
-                  className="w-full bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded text-sm font-medium hover:bg-red-100"
-                  onClick={() => {
-                    updateCellItems(rack.id, selectedCell.row, selectedCell.col, []);
-                    setSelectedCell({...selectedCell, items: []});
-                  }}
-                >
-                  Vaciar toda la división
-                </button>
-              </div>
+              {!isVentas && (
+                <div className="p-3 border-t border-slate-200 bg-slate-50">
+                  <button 
+                    className="w-full bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded text-sm font-medium hover:bg-red-100"
+                    onClick={() => {
+                      if (confirm('¿Vaciar toda la división?')) {
+                        updateCellItems(rack.id, selectedCell.row, selectedCell.col, []);
+                        setSelectedCell({...selectedCell, items: []});
+                      }
+                    }}
+                  >
+                    Vaciar toda la división
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

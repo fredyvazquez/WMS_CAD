@@ -22,8 +22,56 @@ export const DataUploader: React.FC = () => {
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json<RawDataRow>(ws);
-      setter(data);
+      
+      const rawArrays = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+      const parsedData: any[] = [];
+      
+      if (rawArrays.length > 0) {
+        let headers: string[] = [];
+        let isPipe = false;
+        
+        // Find headers
+        for (let i=0; i<Math.min(10, rawArrays.length); i++) {
+          if (rawArrays[i] && typeof rawArrays[i][0] === 'string' && rawArrays[i][0].includes('|')) {
+            isPipe = true;
+            headers = rawArrays[i][0].split('|').map((h: string) => h.trim());
+            break;
+          } else if (rawArrays[i] && rawArrays[i].length > 1) {
+            headers = rawArrays[i].map((h: any) => String(h).trim());
+            break;
+          }
+        }
+        
+        if (headers.length > 0) {
+          const startIndex = rawArrays.findIndex(row => 
+            (isPipe && row[0] && typeof row[0] === 'string' && row[0].includes('|') && row[0].includes(headers[0])) ||
+            (!isPipe && row.includes && row.includes(headers[0]))
+          ) + 1;
+          
+          for (let i = startIndex; i < rawArrays.length; i++) {
+            const row = rawArrays[i];
+            if (!row || row.length === 0) continue;
+            
+            const obj: any = {};
+            if (isPipe && typeof row[0] === 'string') {
+              const parts = row[0].split('|');
+              headers.forEach((h, idx) => {
+                obj[h] = parts[idx] || '';
+              });
+            } else {
+              headers.forEach((h, idx) => {
+                obj[h] = row[idx] || '';
+              });
+            }
+            parsedData.push(obj);
+          }
+        } else {
+          // Fallback
+          parsedData.push(...XLSX.utils.sheet_to_json<RawDataRow>(ws));
+        }
+      }
+      
+      setter(parsedData);
     };
     reader.readAsBinaryString(file);
   };

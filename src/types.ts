@@ -76,6 +76,8 @@ export interface Branch {
   rooms: Room[];
 }
 
+export type UserRole = 'ALMACEN' | 'VENTAS' | null;
+
 export interface LayoutState {
   branches: Branch[];
   activeBranchId: string | null;
@@ -86,6 +88,7 @@ export interface LayoutState {
   articles: Article[];
   searchQuery: string;
   isEditMode: boolean;
+  currentUserRole: UserRole;
 }
 
 export interface InventoryRecord {

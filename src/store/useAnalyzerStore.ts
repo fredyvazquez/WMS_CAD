@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import type { InventoryRecord, RawDataRow, CartItem, ProviderConstraint } from '../types';
@@ -54,9 +54,16 @@ export const useAnalyzerStore = create<AnalyzerState>()(
       processRawData: (initial, entries, exits) => {
         const recordsMap = new Map<string, InventoryRecord>();
 
-        const getRecord = (row: RawDataRow): InventoryRecord => {
-          const id = row.Clave || row.Codigo || row.ID || 'DESCONOCIDO';
-          const desc = row.Descripción || row.Descripcion || 'Sin Descripción';
+        const getRecord = (row: any): InventoryRecord => {
+          // Normalizar las llaves a mayúsculas para evitar problemas de case
+          const normRow: any = {};
+          for (const key in row) {
+            normRow[key.toUpperCase()] = row[key];
+          }
+
+          const id = normRow.CLAVE || normRow.CODIGO || normRow.ID || 'DESCONOCIDO';
+          const desc = normRow.DESCRIPCIÓN || normRow.DESCRIPCION || normRow.DESCRIPTION || 'Sin Descripción';
+          
           if (!recordsMap.has(id)) {
             recordsMap.set(id, {
               id,
@@ -73,36 +80,36 @@ export const useAnalyzerStore = create<AnalyzerState>()(
               reorderPoint: 0,
               safetyStock: 0,
               rotation: 0,
-              unitCost: row.Costo || row.Precio || 0,
+              unitCost: Number(normRow.COSTO) || Number(normRow.PRECIO) || 0,
               abcCategory: null
             });
           } else {
             // Update cost if found later
             const rec = recordsMap.get(id)!;
-            if ((row.Costo || row.Precio) && rec.unitCost === 0) {
-              rec.unitCost = row.Costo || row.Precio || 0;
+            const rowCost = Number(normRow.COSTO) || Number(normRow.PRECIO) || 0;
+            if (rowCost > 0 && rec.unitCost === 0) {
+              rec.unitCost = rowCost;
             }
           }
           return recordsMap.get(id)!;
         };
 
-        initial.forEach(row => {
-          if (!row.Clave && !row.Codigo && !row.ID) return;
-          const rec = getRecord(row);
-          rec.initialStock += (row.Cantidad || row.Existencia || 0);
-        });
+        const processRow = (row: any, isInitial: boolean, isEntry: boolean, isExit: boolean) => {
+          const normRow: any = {};
+          for (const key in row) {
+            normRow[key.toUpperCase()] = row[key];
+          }
+          if (!normRow.CLAVE && !normRow.CODIGO && !normRow.ID) return;
+          const rec = getRecord(row); // getRecord will normalize again, but it's fine
+          const qty = Number(normRow.CANTIDAD) || Number(normRow.EXISTENCIA) || Number(normRow.QTY) || 0;
+          if (isInitial) rec.initialStock += qty;
+          if (isEntry) rec.entries += qty;
+          if (isExit) rec.exits += qty;
+        };
 
-        entries.forEach(row => {
-          if (!row.Clave && !row.Codigo && !row.ID) return;
-          const rec = getRecord(row);
-          rec.entries += (row.Cantidad || 0);
-        });
-
-        exits.forEach(row => {
-          if (!row.Clave && !row.Codigo && !row.ID) return;
-          const rec = getRecord(row);
-          rec.exits += (row.Cantidad || 0);
-        });
+        initial.forEach(row => processRow(row, true, false, false));
+        entries.forEach(row => processRow(row, false, true, false));
+        exits.forEach(row => processRow(row, false, false, true));
 
         // Compute metrics and ABC
         let finalRecords = Array.from(recordsMap.values()).map(rec => {

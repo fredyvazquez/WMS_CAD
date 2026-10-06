@@ -34,6 +34,7 @@ interface WMSStore extends LayoutState {
   loadFromCloud: () => Promise<void>;
   syncStatus: 'idle' | 'saving' | 'saved' | 'error';
   searchQuery: string;
+  setCurrentUserRole: (role: import('../types').UserRole) => void;
 }
 
 const mockBranch: Branch = {
@@ -82,6 +83,8 @@ export const useStore = create<WMSStore>()(
   articles: [],
   searchQuery: '',
   isEditMode: true,
+  currentUserRole: null,
+  setCurrentUserRole: (role) => set({ currentUserRole: role }),
   setIsEditMode: (isEditMode) => set({ isEditMode }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setBranches: (branches) => set({ branches }),

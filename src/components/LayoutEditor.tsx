@@ -3,7 +3,8 @@ import { Stage, Layer, Rect, Text, Group, Transformer } from 'react-konva';
 import { useStore } from '../store/useStore';
 
 export const LayoutEditor: React.FC = () => {
-  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel } = useStore();
+  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel, currentUserRole } = useStore();
+  const isVentas = currentUserRole === 'VENTAS';
 
   const getRackStatusColor = (rack: any) => {
     if (selectedShapeId === rack.id) return '#3b82f6'; // Selected Blue
@@ -119,7 +120,7 @@ export const LayoutEditor: React.FC = () => {
   const layerRef = useRef<any>(null);
 
   React.useEffect(() => {
-    if (isEditMode && selectedShapeId && trRef.current && layerRef.current) {
+    if (isEditMode && !isVentas && selectedShapeId && trRef.current && layerRef.current) {
       const node = layerRef.current.findOne(`#${selectedShapeId}`);
       if (node && node.draggable()) {
         trRef.current.nodes([node]);
@@ -128,7 +129,7 @@ export const LayoutEditor: React.FC = () => {
     } else if (trRef.current) {
       trRef.current.nodes([]);
     }
-  }, [selectedShapeId, isEditMode]);
+  }, [selectedShapeId, isEditMode, isVentas]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
@@ -220,7 +221,7 @@ export const LayoutEditor: React.FC = () => {
               id={room.id} 
               x={room.x || 50} 
               y={room.y || 50} 
-              draggable={isEditMode && !room.isLocked} dragBoundFunc={snapToGrid}
+              draggable={isEditMode && !isVentas && !room.isLocked} dragBoundFunc={snapToGrid}
               onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onDragEnd={(e) => {
                 e.cancelBubble = true;
@@ -262,7 +263,7 @@ export const LayoutEditor: React.FC = () => {
                   id={area.id} 
                   x={area.x} 
                   y={area.y} 
-                  draggable={isEditMode && !area.isLocked} dragBoundFunc={snapToGrid}
+                  draggable={isEditMode && !isVentas && !area.isLocked} dragBoundFunc={snapToGrid}
                   onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
                   onDragEnd={(e) => {
                     e.cancelBubble = true;
@@ -305,7 +306,7 @@ export const LayoutEditor: React.FC = () => {
                         x={rack.x}
                         y={rack.y}
                         rotation={rack.rotation}
-                        draggable={isEditMode && !rack.isLocked} dragBoundFunc={snapToGrid}
+                        draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
                         onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                         onDblClick={() => useStore.getState().setActiveRack(rack.id)}
                         onDragEnd={(e) => {
@@ -357,7 +358,7 @@ export const LayoutEditor: React.FC = () => {
                  x={rack.x}
                  y={rack.y}
                  rotation={rack.rotation}
-                 draggable={isEditMode && !rack.isLocked} dragBoundFunc={snapToGrid}
+                 draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onDblClick={() => useStore.getState().setActiveRack(rack.id)}
                  onDragEnd={(e) => {

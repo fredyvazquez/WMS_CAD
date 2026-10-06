@@ -3,7 +3,7 @@ import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
 import { useStore } from './store/useStore';
-import { Layers, Settings, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity } from 'lucide-react';
+import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity } from 'lucide-react';
 
 function App() {
   const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
@@ -35,9 +35,54 @@ function App() {
   const searchQuery = useStore(state => state.searchQuery);
   const setActiveLevel = useStore(state => state.setActiveLevel);
   const setSearchQuery = useStore(state => state.setSearchQuery);
+  const currentUserRole = useStore(state => state.currentUserRole);
+  const setCurrentUserRole = useStore(state => state.setCurrentUserRole);
+  
+  const [passwordInput, setPasswordInput] = useState('');
+
+  if (!currentUserRole) {
+    return (
+      <div className="flex h-screen w-screen bg-slate-100 items-center justify-center">
+        <div className="bg-white p-8 rounded-xl shadow-xl w-96 flex flex-col items-center">
+          <Layers size={48} className="text-blue-600 mb-4" />
+          <h1 className="text-2xl font-black text-slate-800 mb-6">WMS Login</h1>
+          
+          <input 
+            type="password"
+            placeholder="Contraseña"
+            className="w-full p-3 border border-slate-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg tracking-widest"
+            value={passwordInput}
+            onChange={e => setPasswordInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
+                else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
+                else alert('Contraseña incorrecta');
+              }
+            }}
+          />
+          <div className="flex w-full gap-2 mt-2">
+            <button 
+              className="flex-1 bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700"
+              onClick={() => {
+                if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
+                else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
+                else alert('Contraseña incorrecta');
+              }}
+            >
+              Ingresar
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-4 text-center">Contraseñas por defecto: almacen123 / ventas123</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isVentas = currentUserRole === 'VENTAS';
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-screen bg-white text-slate-800 font-sans overflow-hidden">
+    <div className="flex flex-col md:flex-row h-[100dvh] w-full bg-white text-slate-800 font-sans overflow-hidden">
       {/* Sidebar */}
       <div className="w-full md:w-16 h-16 md:h-full bg-slate-900 text-white flex flex-row md:flex-col items-center py-2 md:py-4 px-2 md:px-0 md:space-y-8 z-50 order-last md:order-first justify-around md:justify-start overflow-x-auto flex-shrink-0">
         <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'LAYOUT' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Mapa 2D" onClick={() => setView('LAYOUT')}>
@@ -57,29 +102,33 @@ function App() {
         </button>
         <div className="hidden md:block flex-grow"></div>
         <div className="flex flex-row md:flex-col gap-2 md:mb-4 md:border-b md:border-slate-700 md:pb-4 border-l md:border-l-0 pl-2 md:pl-0 border-slate-700">
-          <button 
-            className={`p-2 rounded-lg flex-shrink-0 ${syncStatus === 'saving' ? 'animate-pulse text-blue-400' : syncStatus === 'saved' ? 'text-emerald-400' : 'hover:bg-slate-800'}`} 
-            title="Guardar en la Nube" 
-            onClick={() => {
-              saveToCloud().then(() => {
-                if (useStore.getState().syncStatus === 'saved') {
-                  alert('¡Guardado en la nube exitoso!');
-                } else if (useStore.getState().syncStatus === 'error') {
-                  alert('No se pudo guardar. Verifica la conexión o configuración de la base de datos.');
-                }
-              });
-            }}
-          >
-            <CloudUpload size={24} />
-          </button>
+          {!isVentas && (
+            <button 
+              className={`p-2 rounded-lg flex-shrink-0 ${syncStatus === 'saving' ? 'animate-pulse text-blue-400' : syncStatus === 'saved' ? 'text-emerald-400' : 'hover:bg-slate-800'}`} 
+              title="Guardar en la Nube" 
+              onClick={() => {
+                saveToCloud().then(() => {
+                  if (useStore.getState().syncStatus === 'saved') {
+                    alert('¡Guardado en la nube exitoso!');
+                  } else if (useStore.getState().syncStatus === 'error') {
+                    alert('No se pudo guardar. Verifica la conexión o configuración de la base de datos.');
+                  }
+                });
+              }}
+            >
+              <CloudUpload size={24} />
+            </button>
+          )}
           <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Cargar desde la Nube" onClick={() => {
             loadFromCloud().then(() => alert('¡Datos cargados desde la nube! (si había algo guardado)'));
           }}>
             <CloudDownload size={24} />
           </button>
         </div>
-        <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Configuración" onClick={() => alert('La configuración estará disponible próximamente.')}>
-          <Settings size={24} />
+        <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0 text-red-400" title="Cerrar Sesión" onClick={() => {
+          if (confirm('¿Cerrar sesión?')) setCurrentUserRole(null);
+        }}>
+          <X size={24} />
         </button>
       </div>
 
@@ -89,7 +138,7 @@ function App() {
           <>
             {/* Mobile Panel Toggle */}
             <button
-              className="md:hidden absolute bottom-4 right-4 z-50 bg-blue-600 text-white p-3 rounded-full shadow-lg"
+              className="md:hidden absolute bottom-20 md:bottom-4 right-4 z-50 bg-blue-600 text-white p-3 rounded-full shadow-lg"
               onClick={() => setShowPanel(!showPanel)}
             >
               {showPanel ? <X size={24} /> : <Layers size={24} />}
@@ -101,16 +150,18 @@ function App() {
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Layers size={20} /> Estructura
                 </h2>
-                <button 
-                  onClick={() => setIsEditMode(!isEditMode)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-colors ${
-                    isEditMode ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                  }`}
-                  title={isEditMode ? "Bloquear Plano (Modo Lectura)" : "Desbloquear Plano (Modo Edición)"}
-                >
-                  {isEditMode ? <Unlock size={14} /> : <Lock size={14} />}
-                  {isEditMode ? 'Desbloqueado' : 'Bloqueado'}
-                </button>
+                {!isVentas && (
+                  <button 
+                    onClick={() => setIsEditMode(!isEditMode)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-colors ${
+                      isEditMode ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                    }`}
+                    title={isEditMode ? "Bloquear Plano (Modo Lectura)" : "Desbloquear Plano (Modo Edición)"}
+                  >
+                    {isEditMode ? <Unlock size={14} /> : <Lock size={14} />}
+                    {isEditMode ? 'Desbloqueado' : 'Bloqueado'}
+                  </button>
+                )}
               </div>
               
 
@@ -118,7 +169,7 @@ function App() {
               <div className="mb-2">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Sucursal</label>
-                  <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>
+                  {!isVentas && <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>}
                 </div>
                 <select 
                   className="w-full p-1 border border-slate-300 rounded text-sm"
@@ -134,7 +185,7 @@ function App() {
               <div className="mb-2">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Habitación</label>
-                  <button className="text-xs text-blue-600 hover:underline" onClick={() => { if(activeBranchId) addRoom(activeBranchId); }}>+ Agregar</button>
+                  {!isVentas && <button className="text-xs text-blue-600 hover:underline" onClick={() => { if(activeBranchId) addRoom(activeBranchId); }}>+ Agregar</button>}
                 </div>
                 <select 
                   className="w-full p-1 border border-slate-300 rounded text-sm"
@@ -147,60 +198,62 @@ function App() {
                 </select>
               </div>
 
-              <div className="mt-2 border-t border-slate-200 pt-2">
-                <h3 className="text-sm font-bold mb-2">Herramientas</h3>
-                <div className="space-y-2">
-                  <button 
-                    className="w-full bg-indigo-100 text-indigo-700 rounded px-4 py-2 text-sm hover:bg-indigo-200 font-medium"
-                    onClick={() => {
-                      if(activeBranchId && activeRoomId) addArea(activeBranchId, activeRoomId);
-                    }}
-                  >
-                    + Nueva Zona
-                  </button>
-                  <button 
-                    className="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm hover:bg-blue-700 font-medium"
-                    onClick={() => {
-                      if(activeBranchId && activeRoomId) addRack(activeBranchId, activeRoomId);
-                    }}
-                  >
-                    + Nuevo Rack
-                  </button>
-                </div>
-              </div>
+              {!isVentas && (
+                <>
+                  <div className="mt-2 border-t border-slate-200 pt-2">
+                    <h3 className="text-sm font-bold mb-2">Herramientas</h3>
+                    <div className="space-y-2">
+                      <button 
+                        className="w-full bg-indigo-100 text-indigo-700 rounded px-4 py-2 text-sm hover:bg-indigo-200 font-medium"
+                        onClick={() => {
+                          if(activeBranchId && activeRoomId) addArea(activeBranchId, activeRoomId);
+                        }}
+                      >
+                        + Nueva Zona
+                      </button>
+                      <button 
+                        className="w-full bg-blue-600 text-white rounded px-4 py-2 text-sm hover:bg-blue-700 font-medium"
+                        onClick={() => {
+                          if(activeBranchId && activeRoomId) addRack(activeBranchId, activeRoomId);
+                        }}
+                      >
+                        + Nuevo Rack
+                      </button>
+                    </div>
+                  </div>
 
-              {/* Properties Panel */}
-              {(() => {
-                if (!selectedShapeId) return null;
-                
-                let selectedType = '';
-                let selectedData: any = null;
+                  {/* Properties Panel */}
+                  {(() => {
+                    if (!selectedShapeId) return null;
+                    
+                    let selectedType = '';
+                    let selectedData: any = null;
 
-                for (const b of branches) {
-                  if (b.id === selectedShapeId) { selectedType = 'BRANCH'; selectedData = b; break; }
-                  for (const r of b.rooms) {
-                    if (r.id === selectedShapeId) { selectedType = 'ROOM'; selectedData = r; break; }
-                    for (const a of r.areas) {
-                      if (a.id === selectedShapeId) { selectedType = 'AREA'; selectedData = a; break; }
-                      const rack = a.racks.find(rack => rack.id === selectedShapeId);
-                      if (rack) { selectedType = 'RACK'; selectedData = rack; break; }
+                    for (const b of branches) {
+                      if (b.id === selectedShapeId) { selectedType = 'BRANCH'; selectedData = b; break; }
+                      for (const r of b.rooms) {
+                        if (r.id === selectedShapeId) { selectedType = 'ROOM'; selectedData = r; break; }
+                        for (const a of r.areas) {
+                          if (a.id === selectedShapeId) { selectedType = 'AREA'; selectedData = a; break; }
+                          const rack = a.racks.find(rack => rack.id === selectedShapeId);
+                          if (rack) { selectedType = 'RACK'; selectedData = rack; break; }
+                        }
+                        if (selectedType) break;
+                        const rack = r.racks.find(rack => rack.id === selectedShapeId);
+                        if (rack) { selectedType = 'RACK'; selectedData = rack; break; }
+                      }
+                      if (selectedType) break;
                     }
-                    if (selectedType) break;
-                    const rack = r.racks.find(rack => rack.id === selectedShapeId);
-                    if (rack) { selectedType = 'RACK'; selectedData = rack; break; }
-                  }
-                  if (selectedType) break;
-                }
 
-                if (!selectedData) return null;
+                    if (!selectedData) return null;
 
-                if (selectedType === 'RACK') {
-                  return (
-                    <div className="mt-4 border-t border-slate-200 pt-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-sm font-bold text-blue-600">Propiedades del Rack</h3>
-                        <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700" title="Eliminar Rack">
-                          <Trash2 size={16} />
+                    if (selectedType === 'RACK') {
+                      return (
+                        <div className="mt-4 border-t border-slate-200 pt-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-sm font-bold text-blue-600">Propiedades del Rack</h3>
+                            <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700" title="Eliminar Rack">
+                              <Trash2 size={16} />
                         </button>
                       </div>
                       <div className="space-y-2 text-sm">
@@ -372,6 +425,8 @@ function App() {
 
                 return null;
               })()}
+              </>
+              )}
 
             </div>
             
