@@ -56,8 +56,79 @@ export const LayoutEditor: React.FC = () => {
       setSelectedShapeId(null);
     }
   };
-  const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 50, y: 50 }); // Start slightly offset to see room border
+  const [stageScale, setStageScale] = useState(window.innerWidth < 768 ? 0.3 : 1);
+  const [stagePos, setStagePos] = useState({ x: window.innerWidth < 768 ? 20 : 50, y: 50 }); // Start slightly offset to see room border
+
+  // Auto zoom on search match
+  React.useEffect(() => {
+    if (!searchQuery || !branch) return;
+    
+    // Find first matching rack
+    let targetRack: any = null;
+    let targetRackAbsX = 0;
+    let targetRackAbsY = 0;
+
+    for (const r of branch.rooms.filter(room => (room.level || 0) === activeLevel)) {
+      const allRacks = [...r.racks];
+      r.areas.forEach(a => allRacks.push(...a.racks));
+      
+      for (const rack of allRacks) {
+        let hasMatch = false;
+        rack.cells?.forEach((cell: any) => {
+          const items = cell.items && cell.items.length > 0 ? cell.items : (cell.articleId ? [{ articleId: cell.articleId }] : []);
+          items.forEach((item: any) => {
+            if (item.articleId && item.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
+              hasMatch = true;
+            }
+            const art = articles.find(a => a.id === item.articleId);
+            if (art && art.description && art.description.toLowerCase().includes(searchQuery.toLowerCase())) {
+              hasMatch = true;
+            }
+          });
+        });
+
+        if (hasMatch) {
+          targetRack = rack;
+          // Calculate absolute position roughly
+          // rack.x is relative to its parent (Room or Area)
+          // To be precise we need Area + Room or Room coords.
+          let absX = (r.x || 50);
+          let absY = (r.y || 50);
+          
+          // If rack is inside an area, add area coords
+          const parentArea = r.areas.find(a => a.racks.some(ar => ar.id === rack.id));
+          if (parentArea) {
+            absX += parentArea.x;
+            absY += parentArea.y;
+          }
+          absX += rack.x;
+          absY += rack.y;
+          
+          targetRackAbsX = absX;
+          targetRackAbsY = absY;
+          break; // Stop at first match
+        }
+      }
+      if (targetRack) break;
+    }
+
+    if (targetRack) {
+      // Zoom in
+      const newScale = 1.2;
+      setStageScale(newScale);
+      
+      // Center the rack in the viewport
+      const viewportW = containerRef.current ? containerRef.current.clientWidth : window.innerWidth;
+      const viewportH = containerRef.current ? containerRef.current.clientHeight : window.innerHeight;
+      
+      setStagePos({
+        x: (viewportW / 2) - (targetRackAbsX * newScale),
+        y: (viewportH / 2) - (targetRackAbsY * newScale)
+      });
+      
+      setSelectedShapeId(targetRack.id);
+    }
+  }, [searchQuery, branch, activeLevel, articles]);
 
   // Keyboard navigation
   React.useEffect(() => {
@@ -210,6 +281,7 @@ export const LayoutEditor: React.FC = () => {
             strokeWidth={4}
             listening={true}
             onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(branch.id); }}
+            onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(branch.id); }}
           />
           {gridLines}
           <Text x={10} y={10} text={`Terreno: ${branch.name} (${branchWidth}x${branchHeight}cm)`} fontSize={24} fill="#475569" listening={false} />
@@ -223,6 +295,7 @@ export const LayoutEditor: React.FC = () => {
               y={room.y || 50} 
               draggable={isEditMode && !isVentas && !room.isLocked} dragBoundFunc={snapToGrid}
               onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
+              onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onDragEnd={(e) => {
                 e.cancelBubble = true;
                 if (e.target.id() === room.id) {
@@ -265,6 +338,7 @@ export const LayoutEditor: React.FC = () => {
                   y={area.y} 
                   draggable={isEditMode && !isVentas && !area.isLocked} dragBoundFunc={snapToGrid}
                   onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
+                  onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
                   onDragEnd={(e) => {
                     e.cancelBubble = true;
                     if (e.target.id() === area.id) {
@@ -308,7 +382,9 @@ export const LayoutEditor: React.FC = () => {
                         rotation={rack.rotation}
                         draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
                         onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
+                        onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                         onDblClick={() => useStore.getState().setActiveRack(rack.id)}
+                        onDblTap={() => useStore.getState().setActiveRack(rack.id)}
                         onDragEnd={(e) => {
                           e.cancelBubble = true;
                           if (e.target.id() === rack.id) {
@@ -360,7 +436,9 @@ export const LayoutEditor: React.FC = () => {
                  rotation={rack.rotation}
                  draggable={isEditMode && !isVentas && !rack.isLocked} dragBoundFunc={snapToGrid}
                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
+                 onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onDblClick={() => useStore.getState().setActiveRack(rack.id)}
+                 onDblTap={() => useStore.getState().setActiveRack(rack.id)}
                  onDragEnd={(e) => {
                    e.cancelBubble = true;
                    if (e.target.id() === rack.id) {

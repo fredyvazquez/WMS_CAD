@@ -88,12 +88,16 @@ function App() {
         <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'LAYOUT' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Mapa 2D" onClick={() => setView('LAYOUT')}>
           <Map size={24} />
         </button>
-        <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos" onClick={() => setView('DATA')}>
-          <Package size={24} />
-        </button>
-        <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
-          <Activity size={24} />
-        </button>
+        {!isVentas && (
+          <>
+            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos" onClick={() => setView('DATA')}>
+              <Package size={24} />
+            </button>
+            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
+              <Activity size={24} />
+            </button>
+          </>
+        )}
         <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Buscador" onClick={() => {
           setView('LAYOUT');
           setTimeout(() => document.getElementById('main-search-input')?.focus(), 100);
@@ -134,7 +138,7 @@ function App() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
-        {view === 'LAYOUT' ? (
+        {(view === 'LAYOUT' || isVentas) ? (
           <>
             {/* Mobile Panel Toggle */}
             <button
