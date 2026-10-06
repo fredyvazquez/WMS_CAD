@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
+import { InventoryAnalyzer } from './components/InventoryAnalyzer';
 import { useStore } from './store/useStore';
-import { Layers, Settings, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload } from 'lucide-react';
+import { Layers, Settings, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity } from 'lucide-react';
 
 function App() {
-  const [view, setView] = useState<'LAYOUT' | 'DATA'>('LAYOUT');
+  const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
+  const [showPanel, setShowPanel] = useState(false);
   const articles = useStore(state => state.articles);
   const branches = useStore(state => state.branches);
   const activeBranchId = useStore(state => state.activeBranchId);
@@ -35,25 +37,28 @@ function App() {
   const setSearchQuery = useStore(state => state.setSearchQuery);
 
   return (
-    <div className="flex h-screen w-screen bg-white text-slate-800 font-sans">
+    <div className="flex flex-col md:flex-row h-screen w-screen bg-white text-slate-800 font-sans overflow-hidden">
       {/* Sidebar */}
-      <div className="w-16 bg-slate-900 text-white flex flex-col items-center py-4 space-y-8 z-50">
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Mapa 2D" onClick={() => setView('LAYOUT')}>
+      <div className="w-full md:w-16 h-16 md:h-full bg-slate-900 text-white flex flex-row md:flex-col items-center py-2 md:py-4 px-2 md:px-0 md:space-y-8 z-50 order-last md:order-first justify-around md:justify-start overflow-x-auto flex-shrink-0">
+        <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'LAYOUT' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Mapa 2D" onClick={() => setView('LAYOUT')}>
           <Map size={24} />
         </button>
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Artículos" onClick={() => setView('DATA')}>
+        <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos" onClick={() => setView('DATA')}>
           <Package size={24} />
         </button>
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Buscador" onClick={() => {
+        <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
+          <Activity size={24} />
+        </button>
+        <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Buscador" onClick={() => {
           setView('LAYOUT');
           setTimeout(() => document.getElementById('main-search-input')?.focus(), 100);
         }}>
           <Search size={24} />
         </button>
-        <div className="flex-grow"></div>
-        <div className="flex flex-col gap-2 mb-4 border-b border-slate-700 pb-4">
+        <div className="hidden md:block flex-grow"></div>
+        <div className="flex flex-row md:flex-col gap-2 md:mb-4 md:border-b md:border-slate-700 md:pb-4 border-l md:border-l-0 pl-2 md:pl-0 border-slate-700">
           <button 
-            className={`p-2 rounded-lg ${syncStatus === 'saving' ? 'animate-pulse text-blue-400' : syncStatus === 'saved' ? 'text-emerald-400' : 'hover:bg-slate-800'}`} 
+            className={`p-2 rounded-lg flex-shrink-0 ${syncStatus === 'saving' ? 'animate-pulse text-blue-400' : syncStatus === 'saved' ? 'text-emerald-400' : 'hover:bg-slate-800'}`} 
             title="Guardar en la Nube" 
             onClick={() => {
               saveToCloud().then(() => {
@@ -67,23 +72,31 @@ function App() {
           >
             <CloudUpload size={24} />
           </button>
-          <button className="p-2 hover:bg-slate-800 rounded-lg" title="Cargar desde la Nube" onClick={() => {
+          <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Cargar desde la Nube" onClick={() => {
             loadFromCloud().then(() => alert('¡Datos cargados desde la nube! (si había algo guardado)'));
           }}>
             <CloudDownload size={24} />
           </button>
         </div>
-        <button className="p-2 hover:bg-slate-800 rounded-lg" title="Configuración" onClick={() => alert('La configuración estará disponible próximamente.')}>
+        <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Configuración" onClick={() => alert('La configuración estará disponible próximamente.')}>
           <Settings size={24} />
         </button>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
         {view === 'LAYOUT' ? (
           <>
+            {/* Mobile Panel Toggle */}
+            <button
+              className="md:hidden absolute bottom-4 right-4 z-50 bg-blue-600 text-white p-3 rounded-full shadow-lg"
+              onClick={() => setShowPanel(!showPanel)}
+            >
+              {showPanel ? <X size={24} /> : <Layers size={24} />}
+            </button>
+            
             {/* Context Panel */}
-            <div className="w-80 bg-slate-50 border-r border-slate-200 p-3 flex flex-col overflow-y-auto">
+            <div className={`absolute md:relative z-40 h-full bg-slate-50 border-r border-slate-200 p-3 flex flex-col overflow-y-auto w-72 md:w-80 transform transition-transform duration-300 ${showPanel ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Layers size={20} /> Estructura
@@ -222,6 +235,18 @@ function App() {
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
+                            <label className="block text-slate-500 mb-1">Filas (Niveles)</label>
+                            <input type="number" min="1" className="w-full p-1 border border-slate-300 rounded"
+                              value={selectedData.rows} onChange={e => updateRackProperties(selectedData.id, { rows: Number(e.target.value) })} />
+                          </div>
+                          <div>
+                            <label className="block text-slate-500 mb-1">Columnas</label>
+                            <input type="number" min="1" className="w-full p-1 border border-slate-300 rounded"
+                              value={selectedData.cols} onChange={e => updateRackProperties(selectedData.id, { cols: Number(e.target.value) })} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
                             <label className="block text-slate-500 mb-1">Alto (cm)</label>
                             <input type="number" className="w-full p-1 border border-slate-300 rounded"
                               value={selectedData.height} onChange={e => updateRackProperties(selectedData.id, { height: Number(e.target.value) })} />
@@ -240,7 +265,7 @@ function App() {
                                value={selectedData.color && selectedData.color.startsWith('#') ? selectedData.color.slice(0, 7) : '#0f172a'} 
                                onChange={e => updateRackProperties(selectedData.id, { color: e.target.value })}
                              />
-                             <span className="text-xs text-slate-400">Si lo dejas vacío o en negro, se coloreará según el estatus de sus artículos.</span>
+                             <span className="text-xs text-slate-400">Si lo dejas vacío, se coloreará según estatus o búsqueda.</span>
                            </div>
                         </div>
                       </div>
@@ -353,9 +378,56 @@ function App() {
             {/* Canvas */}
             <div className="flex-1 relative">
               <LayoutEditor />
+
+              {/* Floating Rack Contents Panel */}
+              {(() => {
+                if (!selectedShapeId) return null;
+                let rack: any = null;
+                for (const b of branches) {
+                  for (const r of b.rooms) {
+                    for (const a of r.areas) {
+                      rack = a.racks.find(rack => rack.id === selectedShapeId);
+                      if (rack) break;
+                    }
+                    if (rack) break;
+                    rack = r.racks.find(rack => rack.id === selectedShapeId);
+                    if (rack) break;
+                  }
+                  if (rack) break;
+                }
+                
+                if (!rack) return null;
+
+                const codes = new Set<string>();
+                (rack.cells || []).forEach((c: any) => {
+                  const items = c.items && c.items.length > 0 ? c.items : (c.articleId ? [{articleId: c.articleId}] : []);
+                  items.forEach((i: any) => { if (i.articleId) codes.add(i.articleId) });
+                });
+
+                return (
+                  <div className="absolute right-4 top-20 bottom-4 w-64 bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300">
+                    <div className="bg-slate-800 text-white p-3 font-bold text-sm flex justify-between items-center shadow-sm">
+                      <span>Contenido de {rack.name}</span>
+                      <span className="bg-slate-700 px-2 py-0.5 rounded-full text-xs">{codes.size} items</span>
+                    </div>
+                    <div className="p-3 overflow-y-auto flex-1 space-y-1.5 bg-slate-50">
+                      {codes.size === 0 ? (
+                        <div className="text-sm text-slate-400 italic text-center mt-4">Rack vacío</div>
+                      ) : (
+                        Array.from(codes).map(code => (
+                          <div key={code} className="text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-slate-700 font-mono shadow-sm">
+                            {code}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Overlay Top Bar */}
-              <div className="absolute top-4 left-4 right-4 flex justify-between pointer-events-none">
-                <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 flex gap-4 text-sm font-medium text-slate-600 pointer-events-auto">
+              <div className="absolute top-4 left-4 right-4 flex flex-col md:flex-row justify-between pointer-events-none gap-2 z-30">
+                <div className="hidden md:flex bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 gap-4 text-sm font-medium text-slate-600 pointer-events-auto">
                   <div className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-green-500"></span> Activo
                   </div>
@@ -367,9 +439,9 @@ function App() {
                   </div>
                 </div>
                 {/* Right Side Controls */}
-                <div className="flex gap-2 pointer-events-auto">
+                <div className="flex gap-2 pointer-events-auto w-full md:w-auto justify-between md:justify-end">
                   <select 
-                    className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                    className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none"
                     value={activeLevel || 0}
                     onChange={(e) => setActiveLevel(Number(e.target.value))}
                   >
@@ -379,13 +451,13 @@ function App() {
                   </select>
 
                   {/* Search Bar */}
-                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 flex items-center">
-                    <Search size={18} className="text-slate-400 mr-2" />
+                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 flex items-center flex-1 md:flex-none">
+                    <Search size={18} className="text-slate-400 mr-1 md:mr-2 flex-shrink-0" />
                     <input 
                       id="main-search-input"
                       type="text" 
                       placeholder="Buscar Clave o Desc..."
-                      className="bg-transparent border-none outline-none text-sm w-48"
+                      className="bg-transparent border-none outline-none text-sm w-full md:w-48"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -394,21 +466,30 @@ function App() {
               </div>
             </div>
           </>
-        ) : (
-          <div className="p-8 w-full bg-slate-50 overflow-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-2xl font-bold">Registro de Artículos</h1>
-              <div className="flex gap-2">
+        ) : view === 'DATA' ? (
+          <div className="p-4 md:p-8 w-full bg-slate-50 overflow-auto">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <h1 className="text-xl md:text-2xl font-bold">Registro de Artículos</h1>
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="hidden md:inline-block text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full shadow-sm border border-emerald-200">
+                  ✅ Activo y Memoria Lista
+                </span>
                 <button 
-                  className="bg-orange-500 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-orange-600"
+                  className={`px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition-colors ${useStore.getState().syncStatus === 'saving' ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                   onClick={() => {
-                     useStore.getState().autoAssignDemo();
-                     alert("¡Inventario distribuido en los Racks automáticamente para propósitos de demostración!");
+                    useStore.getState().saveToCloud().then(() => {
+                      if (useStore.getState().syncStatus === 'saved') {
+                        alert('¡Catálogo guardado en la nube exitosamente!');
+                      } else {
+                        alert('Hubo un problema al subir a la nube.');
+                      }
+                    });
                   }}
                 >
-                  Auto-Asignar (Demo)
+                  <CloudUpload size={18} /> 
+                  {useStore.getState().syncStatus === 'saving' ? 'Subiendo...' : 'Respaldar en la Nube'}
                 </button>
-                <label className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700">
+                <label className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700 text-sm md:text-base font-medium">
                   Importar Excel
                   <input 
                     type="file" 
@@ -420,6 +501,7 @@ function App() {
                         import('./utils/excelParser').then(async ({ parseExcelData }) => {
                           const data = await parseExcelData(file);
                           useStore.getState().setArticles(data);
+                          alert('¡Excel importado con éxito! Tus artículos ya están listos en la memoria para asignarlos en el Mapa 2D.');
                         });
                       }
                     }} 
@@ -428,8 +510,8 @@ function App() {
               </div>
             </div>
             
-            <div className="bg-white shadow rounded-lg border border-slate-200">
-              <table className="w-full text-left border-collapse">
+            <div className="bg-white shadow rounded-lg border border-slate-200 overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
                     <th className="p-3 font-semibold text-sm">Clave</th>
@@ -470,7 +552,9 @@ function App() {
               )}
             </div>
           </div>
-        )}
+        ) : view === 'ANALYZER' ? (
+          <InventoryAnalyzer />
+        ) : null}
       </div>
       <RackFrontalView />
     </div>

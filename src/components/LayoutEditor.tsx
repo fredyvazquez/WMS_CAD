@@ -174,7 +174,11 @@ export const LayoutEditor: React.FC = () => {
   }
 
   return (
-    <div className="w-full h-full bg-slate-200 overflow-hidden outline-none" ref={containerRef} tabIndex={0}>
+    <div className="w-full h-full bg-slate-200 overflow-hidden outline-none relative" ref={containerRef} tabIndex={0}>
+      <div className="absolute bottom-20 left-4 md:bottom-4 flex flex-col gap-2 z-10 pointer-events-auto">
+        <button className="bg-white/90 backdrop-blur shadow-md w-10 h-10 flex items-center justify-center rounded-full text-slate-700 font-bold text-xl" onClick={(e) => { e.preventDefault(); setStageScale(s => s * 1.2); }}>+</button>
+        <button className="bg-white/90 backdrop-blur shadow-md w-10 h-10 flex items-center justify-center rounded-full text-slate-700 font-bold text-xl" onClick={(e) => { e.preventDefault(); setStageScale(s => s / 1.2); }}>-</button>
+      </div>
       <Stage 
         width={dimensions.width} 
         height={dimensions.height} 

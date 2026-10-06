@@ -87,3 +87,47 @@ export interface LayoutState {
   searchQuery: string;
   isEditMode: boolean;
 }
+
+export interface InventoryRecord {
+  id: string; // CLAVE
+  description: string;
+  provider: string; // Extracted provider
+  initialStock: number;
+  entries: number;
+  exits: number;
+  theoreticalStock: number;
+  physicalStock: number | null; // Null if not registered yet
+  leadTimeDays: number; // Capturado por el usuario
+  maxStock: number;
+  minStock: number;
+  reorderPoint: number;
+  safetyStock: number;
+  rotation: number;
+  unitCost: number;
+  abcCategory: 'A' | 'B' | 'C' | null;
+}
+
+export interface RawDataRow {
+  Clave?: string;
+  Codigo?: string;
+  ID?: string;
+  Descripción?: string;
+  Descripcion?: string;
+  Cantidad?: number;
+  Existencia?: number;
+  Costo?: number;
+  Precio?: number;
+}
+
+export interface ProviderConstraint {
+  minVolume: number;
+  minCost: number;
+}
+
+export interface CartItem {
+  id: string;
+  provider: string;
+  description: string;
+  quantityToOrder: number;
+  unitCost: number;
+}

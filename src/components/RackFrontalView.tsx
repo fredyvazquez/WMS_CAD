@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore';
 import { X, Save, Plus, Trash2 } from 'lucide-react';
 
 export const RackFrontalView: React.FC = () => {
-  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems } = useStore();
+  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery } = useStore();
   const [selectedCell, setSelectedCell] = useState<{row: number, col: number, items: {id: string, articleId: string, quantity: number}[]} | null>(null);
 
   // For the active edit form of an item inside the selected cell
@@ -94,18 +94,34 @@ export const RackFrontalView: React.FC = () => {
 
                   let cellColor = "bg-slate-50";
                   let text = "Vacío";
+                  let hasMatch = false;
                   
                   if (cellItems.length > 0) {
                      const firstItem = cellItems[0];
                      const art = useStore.getState().articles.find((a: any) => a.id === firstItem.articleId);
                      text = cellItems.length > 1 ? `Múltiples (${cellItems.length})` : firstItem.articleId;
-                     if (art) {
+                     
+                     if (searchQuery) {
+                       hasMatch = cellItems.some((i: any) => {
+                         const a = useStore.getState().articles.find((x: any) => x.id === i.articleId);
+                         return i.articleId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                               (a && a.description && a.description.toLowerCase().includes(searchQuery.toLowerCase()));
+                       });
+                     }
+
+                     if (hasMatch) {
+                        cellColor = 'bg-purple-500 border-purple-700 text-white';
+                     } else if (searchQuery) {
+                        cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dim non-matches
+                     } else if (art) {
                         if (art.status === 'SCRAP' || art.status === 'DAMAGED') cellColor = 'bg-red-200 border-red-400';
                         else if (art.status === 'SLOW' || art.status === 'OFFLINE') cellColor = 'bg-yellow-200 border-yellow-400';
                         else cellColor = 'bg-green-200 border-green-400';
                      } else {
                         cellColor = 'bg-blue-200 border-blue-400'; // Unknown status
                      }
+                  } else if (searchQuery) {
+                     cellColor = 'bg-slate-200 border-slate-300 opacity-50'; // Dim empty if searching
                   }
                   
                   const cellId = `${rack?.id}-r${rIndex}-c${cIndex}`;
