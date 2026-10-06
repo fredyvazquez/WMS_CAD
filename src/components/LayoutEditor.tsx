@@ -56,8 +56,32 @@ export const LayoutEditor: React.FC = () => {
       setSelectedShapeId(null);
     }
   };
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
   const [stageScale, setStageScale] = useState(window.innerWidth < 768 ? 0.3 : 1);
   const [stagePos, setStagePos] = useState({ x: window.innerWidth < 768 ? 20 : 50, y: 50 }); // Start slightly offset to see room border
+  const [hasAutoZoomedInit, setHasAutoZoomedInit] = useState(false);
+
+  React.useEffect(() => {
+    if (!branch || !containerRef.current || hasAutoZoomedInit) return;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
+    if (cw === 0 || ch === 0) return;
+    
+    const bWidth = branch.width || 2000;
+    const bHeight = branch.height || 1500;
+    
+    // Calculate scale to fit with a bit of padding (0.9)
+    const fitScale = Math.min(cw / bWidth, ch / bHeight) * 0.9;
+    setStageScale(fitScale);
+    
+    // Center it
+    setStagePos({
+      x: (cw - bWidth * fitScale) / 2,
+      y: (ch - bHeight * fitScale) / 2
+    });
+    setHasAutoZoomedInit(true);
+  }, [branch, hasAutoZoomedInit, dimensions]);
 
   // Auto zoom on search match
   React.useEffect(() => {
@@ -201,9 +225,6 @@ export const LayoutEditor: React.FC = () => {
       trRef.current.nodes([]);
     }
   }, [selectedShapeId, isEditMode, isVentas]);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -498,6 +519,79 @@ export const LayoutEditor: React.FC = () => {
           />
         </Layer>
       </Stage>
+
+      {/* Minimap */}
+      <div className="hidden md:block absolute bottom-4 right-4 md:right-[18rem] bg-white border border-slate-300 shadow-xl rounded-lg overflow-hidden pointer-events-auto z-10" style={{ width: 200, height: 150 }}>
+        <Stage
+          width={200}
+          height={150}
+          scaleX={Math.min(200 / branchWidth, 150 / branchHeight)}
+          scaleY={Math.min(200 / branchWidth, 150 / branchHeight)}
+          onClick={(e) => {
+            const pos = e.target.getStage()?.getPointerPosition();
+            if (pos) {
+              const scale = Math.min(200 / branchWidth, 150 / branchHeight);
+              const realX = pos.x / scale;
+              const realY = pos.y / scale;
+              // Center the clicked point
+              setStagePos({
+                x: (dimensions.width / 2) - (realX * stageScale),
+                y: (dimensions.height / 2) - (realY * stageScale)
+              });
+            }
+          }}
+          onDragMove={(e) => {
+             if (e.target.id() === 'viewport-box') {
+                // e.target.x() is in scaled coordinates? No, it's in unscaled coordinates of its parent.
+                // Since it's inside a scaled Stage, e.target.x() is the absolute unscaled x.
+                setStagePos({
+                  x: -e.target.x() * stageScale,
+                  y: -e.target.y() * stageScale
+                });
+             }
+          }}
+        >
+          <Layer>
+            <Rect width={branchWidth} height={branchHeight} fill="#e2e8f0" />
+            {branch.rooms.filter(r => (r.level || 0) === activeLevel).map(room => (
+              <Group key={`mini-${room.id}`} x={room.x || 50} y={room.y || 50}>
+                <Rect width={room.width || 1000} height={room.height || 800} fill={room.color || "#ffffff"} />
+                {room.areas.map(area => (
+                  <Group key={`mini-${area.id}`} x={area.x} y={area.y}>
+                    <Rect width={area.width} height={area.height} fill={area.color || "rgba(255, 255, 0, 0.2)"} />
+                    {area.racks.map(rack => (
+                      <Rect key={`mini-${rack.id}`} x={rack.x} y={rack.y} rotation={rack.rotation} width={rack.width} height={rack.depth} fill={getRackStatusColor(rack)} />
+                    ))}
+                  </Group>
+                ))}
+                {room.racks.map(rack => (
+                  <Rect key={`mini-${rack.id}`} x={rack.x} y={rack.y} rotation={rack.rotation} width={rack.width} height={rack.depth} fill={getRackStatusColor(rack)} />
+                ))}
+              </Group>
+            ))}
+            
+            {/* Viewport indicator */}
+            <Rect 
+              id="viewport-box"
+              x={-stagePos.x / stageScale}
+              y={-stagePos.y / stageScale}
+              width={dimensions.width / stageScale}
+              height={dimensions.height / stageScale}
+              stroke="#ef4444"
+              strokeWidth={4 / Math.min(200 / branchWidth, 150 / branchHeight)}
+              fill="rgba(239, 68, 68, 0.2)"
+              draggable
+              dragBoundFunc={(pos) => {
+                return {
+                   x: pos.x,
+                   y: pos.y
+                };
+              }}
+            />
+          </Layer>
+        </Stage>
+      </div>
+
     </div>
   );
 };
