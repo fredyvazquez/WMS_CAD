@@ -39,7 +39,7 @@ function App() {
   const setCurrentUserRole = useStore(state => state.setCurrentUserRole);
   
   const [passwordInput, setPasswordInput] = useState('');
-
+  const [isRackPanelMinimized, setIsRackPanelMinimized] = useState(false);
   if (!currentUserRole) {
     return (
       <div className="flex h-screen w-screen bg-slate-100 items-center justify-center">
@@ -464,22 +464,35 @@ function App() {
                 });
 
                 return (
-                  <div className="absolute right-4 top-20 bottom-4 w-64 bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300">
-                    <div className="bg-slate-800 text-white p-3 font-bold text-sm flex justify-between items-center shadow-sm">
-                      <span>Contenido de {rack.name}</span>
-                      <span className="bg-slate-700 px-2 py-0.5 rounded-full text-xs">{codes.size} items</span>
+                  <div className={`absolute right-4 bottom-4 md:top-20 w-64 ${isRackPanelMinimized ? 'h-auto' : 'max-h-48 md:max-h-none'} bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300`}>
+                    <div className="bg-slate-800 text-white p-2 md:p-3 font-bold text-sm flex justify-between items-center shadow-sm cursor-pointer" onClick={() => setIsRackPanelMinimized(!isRackPanelMinimized)}>
+                      <span className="truncate pr-2">Caja: {rack.name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="bg-slate-700 px-2 py-0.5 rounded-full text-xs">{codes.size} art.</span>
+                        <span>{isRackPanelMinimized ? '+' : '-'}</span>
+                      </div>
                     </div>
-                    <div className="p-3 overflow-y-auto flex-1 space-y-1.5 bg-slate-50">
-                      {codes.size === 0 ? (
-                        <div className="text-sm text-slate-400 italic text-center mt-4">Rack vacío</div>
-                      ) : (
-                        Array.from(codes).map(code => (
-                          <div key={code} className="text-sm bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-slate-700 font-mono shadow-sm">
-                            {code}
-                          </div>
-                        ))
-                      )}
-                    </div>
+                    {!isRackPanelMinimized && (
+                      <div className="p-2 md:p-3 overflow-y-auto flex-1 space-y-1.5 bg-slate-50">
+                        {codes.size === 0 ? (
+                          <div className="text-sm text-slate-400 italic text-center mt-2">Rack vacío</div>
+                        ) : (
+                          Array.from(codes).map(code => {
+                            const isMatch = searchQuery && code.toLowerCase().includes(searchQuery.toLowerCase());
+                            return (
+                              <button 
+                                key={code} 
+                                className={`w-full text-left text-xs md:text-sm border px-2 py-1 rounded md:rounded-lg font-mono shadow-sm truncate cursor-pointer transition-colors ${isMatch ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200'}`}
+                                onClick={() => useStore.getState().setActiveRack(rack.id)}
+                                title="Abrir vista frontal"
+                              >
+                                {code}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
