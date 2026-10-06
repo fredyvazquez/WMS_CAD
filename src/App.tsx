@@ -464,7 +464,7 @@ function App() {
                 });
 
                 return (
-                  <div className={`absolute right-4 bottom-4 md:bottom-auto md:top-20 w-64 ${isRackPanelMinimized ? 'h-auto' : 'max-h-64 md:max-h-[calc(100vh-6rem)]'} bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300`}>
+                  <div className={`absolute right-4 bottom-4 w-64 ${isRackPanelMinimized ? 'h-auto' : 'max-h-64 md:max-h-[calc(100vh-6rem)]'} bg-slate-50 shadow-2xl border border-slate-200 rounded-xl pointer-events-auto flex flex-col z-20 overflow-hidden transition-all duration-300`}>
                     <div className="bg-slate-800 text-white p-2 md:p-3 font-bold text-sm flex justify-between items-center shadow-sm cursor-pointer" onClick={() => setIsRackPanelMinimized(!isRackPanelMinimized)}>
                       <span className="truncate pr-2">Caja: {rack.name}</span>
                       <div className="flex items-center gap-2 flex-shrink-0">
