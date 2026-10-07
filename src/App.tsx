@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
 import { useStore } from './store/useStore';
-import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity } from 'lucide-react';
+import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User } from 'lucide-react';
 
 function App() {
   const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
@@ -40,8 +40,71 @@ function App() {
   const viewMode = useStore(state => state.viewMode);
   const setViewMode = useStore(state => state.setViewMode);
   
+  const userBranchScope = useStore(state => state.userBranchScope);
+  const setUserBranchScope = useStore(state => state.setUserBranchScope);
+  
+  const handleLogin = () => {
+    const pw = passwordInput.toLowerCase().trim();
+    if (pw === 'admin123') {
+      setCurrentUserRole('ADMIN');
+      setUserBranchScope(null);
+      return;
+    }
+    
+    // Match almacen[sucursal] or ventas[sucursal]
+    if (pw.startsWith('almacen') || pw.startsWith('ventas')) {
+      const role = pw.startsWith('almacen') ? 'ALMACEN' : 'VENTAS';
+      const branchQuery = pw.replace('almacen', '').replace('ventas', '').trim();
+      
+      if (!branchQuery || branchQuery === '123') {
+         // Legacy generic login
+         setCurrentUserRole(role);
+         setUserBranchScope(null);
+         return;
+      }
+      
+      // Handle alias for queretaro -> qro
+      let normalizedQuery = branchQuery;
+      if (normalizedQuery === 'qro') normalizedQuery = 'queretaro';
+      
+      // Look for a branch that matches this name (e.g. 'leon', 'queretaro', 'celaya')
+      const matchedBranch = branches.find(b => b.name.toLowerCase().includes(normalizedQuery));
+      if (matchedBranch) {
+         setCurrentUserRole(role);
+         setUserBranchScope(matchedBranch.id);
+         setActiveBranch(matchedBranch.id);
+         return;
+      } else {
+         alert(`No se encontró la sucursal: ${branchQuery}`);
+         return;
+      }
+    }
+    
+    alert('Contraseña incorrecta');
+  };
+
   const [passwordInput, setPasswordInput] = useState('');
   const [isRackPanelMinimized, setIsRackPanelMinimized] = useState(false);
+
+  // Ensure activeRoomId belongs to the current activeLevel (MUST BE BEFORE EARLY RETURN)
+  useEffect(() => {
+    if (activeBranchId && activeRoomId) {
+      const branch = branches.find(b => b.id === activeBranchId);
+      if (branch) {
+        const room = branch.rooms.find(r => r.id === activeRoomId);
+        if (room && (room.level || 0) !== activeLevel) {
+          // Current room is on a different level. Switch to the first room on the active level.
+          const roomsOnLevel = branch.rooms.filter(r => (r.level || 0) === activeLevel);
+          if (roomsOnLevel.length > 0) {
+            setActiveRoom(roomsOnLevel[0].id);
+          } else {
+            setActiveRoom(null as any);
+          }
+        }
+      }
+    }
+  }, [activeLevel, activeBranchId, branches, activeRoomId, setActiveRoom]);
+
   if (!currentUserRole) {
     return (
       <div className="flex h-screen w-screen bg-slate-100 items-center justify-center">
@@ -56,28 +119,18 @@ function App() {
             value={passwordInput}
             onChange={e => setPasswordInput(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') {
-                if (passwordInput === 'admin123') setCurrentUserRole('ADMIN');
-                else if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
-                else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
-                else alert('Contraseña incorrecta');
-              }
+              if (e.key === 'Enter') handleLogin();
             }}
           />
           <div className="flex w-full gap-2 mt-2">
             <button 
               className="flex-1 bg-slate-800 text-white py-2 rounded font-bold hover:bg-slate-700"
-              onClick={() => {
-                if (passwordInput === 'admin123') setCurrentUserRole('ADMIN');
-                else if (passwordInput === 'almacen123') setCurrentUserRole('ALMACEN');
-                else if (passwordInput === 'ventas123') setCurrentUserRole('VENTAS');
-                else alert('Contraseña incorrecta');
-              }}
+              onClick={handleLogin}
             >
               Ingresar
             </button>
           </div>
-          <p className="text-xs text-slate-400 mt-4 text-center">admin123 / almacen123 / ventas123</p>
+          <p className="text-xs text-slate-400 mt-4 text-center">Ejemplos: admin123, ventasleon, almacenqro</p>
         </div>
       </div>
     );
@@ -147,7 +200,7 @@ function App() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden min-w-0">
         {(view === 'LAYOUT' || isVentas) ? (
           <>
             {/* Mobile Panel Toggle */}
@@ -159,7 +212,7 @@ function App() {
             </button>
             
             {/* Context Panel */}
-            <div className={`absolute md:relative z-40 h-full bg-slate-50 flex flex-col overflow-y-auto w-72 md:w-80 transform transition-all duration-300 ${showPanel ? 'translate-x-0 border-r border-slate-200 p-3' : '-translate-x-full md:translate-x-0 md:-ml-80 border-r-0 p-3 md:p-0'}`}>
+            <div className={`absolute md:relative z-40 h-full bg-slate-50 flex flex-col overflow-y-auto w-72 md:w-80 flex-shrink-0 transform transition-all duration-300 ${showPanel ? 'translate-x-0 border-r border-slate-200 p-3 md:ml-0' : '-translate-x-full md:translate-x-0 md:-ml-80 border-r-0 p-3 md:p-0'}`}>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Layers size={20} /> Estructura
@@ -183,14 +236,15 @@ function App() {
               <div className="mb-2">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Sucursal</label>
-                  {!isVentas && <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>}
+                  {isAdmin && <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>}
                 </div>
                 <select 
-                  className="w-full p-1 border border-slate-300 rounded text-sm"
+                  className={`w-full p-1 border border-slate-300 rounded text-sm ${userBranchScope ? 'bg-slate-100 cursor-not-allowed opacity-70' : ''}`}
                   value={activeBranchId || ''}
                   onChange={(e) => setActiveBranch(e.target.value)}
+                  disabled={!!userBranchScope}
                 >
-                  {branches.map(b => (
+                  {branches.filter(b => !userBranchScope || b.id === userBranchScope).map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
@@ -199,14 +253,14 @@ function App() {
               <div className="mb-2">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Habitación</label>
-                  {!isVentas && <button className="text-xs text-blue-600 hover:underline" onClick={() => { if(activeBranchId) addRoom(activeBranchId); }}>+ Agregar</button>}
+                  {isAdmin && <button className="text-xs text-blue-600 hover:underline" onClick={() => { if(activeBranchId) addRoom(activeBranchId, activeLevel); }}>+ Agregar</button>}
                 </div>
                 <select 
                   className="w-full p-1 border border-slate-300 rounded text-sm"
                   value={activeRoomId || ''}
                   onChange={(e) => setActiveRoom(e.target.value)}
                 >
-                  {branches.find(b => b.id === activeBranchId)?.rooms.map(r => (
+                  {branches.find(b => b.id === activeBranchId)?.rooms.filter(r => (r.level || 0) === activeLevel).map(r => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
@@ -445,7 +499,7 @@ function App() {
             </div>
             
             {/* Canvas */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-w-0">
               <LayoutEditor />
 
               {/* Floating Rack Contents Panel */}
@@ -511,8 +565,8 @@ function App() {
               })()}
 
               {/* Overlay Top Bar */}
-              <div className="absolute top-4 left-4 right-4 flex flex-col md:flex-row justify-between pointer-events-none gap-2 z-30">
-                <div className="hidden md:flex bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 gap-4 text-sm font-medium text-slate-600 pointer-events-auto">
+              <div className="absolute top-4 left-4 right-4 flex flex-col xl:flex-row justify-between pointer-events-none gap-2 z-30 flex-wrap">
+                <div className="hidden md:flex bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-4 gap-4 text-sm font-medium text-slate-600 pointer-events-auto flex-wrap">
                   {viewMode === 'DEFAULT' && (
                     <>
                       <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-500"></span> Activo</div>
@@ -545,7 +599,7 @@ function App() {
                   )}
                 </div>
                 {/* Right Side Controls */}
-                <div className="flex gap-2 pointer-events-auto w-full md:w-auto justify-between md:justify-end">
+                <div className="flex gap-2 pointer-events-auto w-full md:w-auto justify-between md:justify-end flex-wrap">
                   {!isVentas && (
                     <select 
                       className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
@@ -570,18 +624,30 @@ function App() {
                   </select>
 
                   {/* Search Bar */}
-                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 flex items-center flex-1 md:flex-none">
+                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 flex items-center flex-1 min-w-0">
                     <Search size={18} className="text-slate-400 mr-1 md:mr-2 flex-shrink-0" />
                     <input 
                       id="main-search-input"
                       type="text" 
                       placeholder="Buscar Clave o Desc..."
-                      className="bg-transparent border-none outline-none text-sm w-full md:w-48"
+                      className="bg-transparent border-none outline-none text-sm w-full min-w-0"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* User Profile Badge */}
+              <div className="absolute bottom-4 left-20 z-40 bg-slate-900/90 backdrop-blur text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 border border-slate-700 pointer-events-auto">
+                <User size={16} className="text-blue-400" />
+                <span className="font-bold text-sm">{currentUserRole}</span>
+                <span className="text-slate-500">|</span>
+                <span className="text-sm text-slate-300">
+                  {userBranchScope 
+                    ? branches.find(b => b.id === userBranchScope)?.name 
+                    : 'Global'}
+                </span>
               </div>
             </div>
           </>

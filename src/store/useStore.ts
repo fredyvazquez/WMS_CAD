@@ -14,7 +14,7 @@ interface WMSStore extends LayoutState {
   updateRackProperties: (rackId: string, updates: Partial<Rack>) => void;
   updateRackPosition: (branchId: string, roomId: string, areaId: string | null, rackId: string, x: number, y: number, rotation: number) => void;
   addRack: (branchId: string, roomId: string) => void;
-  addRoom: (branchId: string) => void;
+  addRoom: (branchId: string, level?: number) => void;
   assignArticleToCell: (rackId: string, row: number, col: number, articleId: string | null, quantity: number) => void;
   updateCellItems: (rackId: string, row: number, col: number, items: import('../types').CellItem[]) => void;
   autoAssignDemo: () => void;
@@ -35,6 +35,7 @@ interface WMSStore extends LayoutState {
   syncStatus: 'idle' | 'saving' | 'saved' | 'error';
   searchQuery: string;
   setCurrentUserRole: (role: import('../types').UserRole) => void;
+  setUserBranchScope: (branchId: string | null) => void;
   setViewMode: (viewMode: import('../types').ViewMode) => void;
 }
 
@@ -85,9 +86,11 @@ export const useStore = create<WMSStore>()(
   searchQuery: '',
   isEditMode: true,
   currentUserRole: null,
+  userBranchScope: null,
   viewMode: 'DEFAULT',
   setViewMode: (viewMode: import('../types').ViewMode) => set({ viewMode }),
   setCurrentUserRole: (role) => set({ currentUserRole: role }),
+  setUserBranchScope: (branchId) => set({ userBranchScope: branchId }),
   setIsEditMode: (isEditMode) => set({ isEditMode }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setBranches: (branches) => set({ branches }),
@@ -143,7 +146,7 @@ export const useStore = create<WMSStore>()(
     
     return { branches: newBranches, articles: articlesCopy };
   }),
-  addRoom: (branchId) => set((state) => {
+  addRoom: (branchId, level = 0) => set((state) => {
     const newBranches = [...state.branches];
     const branch = newBranches.find(b => b.id === branchId);
     if (branch) {
@@ -151,6 +154,7 @@ export const useStore = create<WMSStore>()(
         id: `r-${Date.now()}`,
         name: `Habitación ${branch.rooms.length + 1}`,
         x: 50, y: 50, width: 800, height: 600,
+        level,
         areas: [], racks: []
       };
       branch.rooms.push(newRoom);

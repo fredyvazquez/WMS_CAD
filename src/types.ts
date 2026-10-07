@@ -91,6 +91,7 @@ export interface LayoutState {
   searchQuery: string;
   isEditMode: boolean;
   currentUserRole: UserRole;
+  userBranchScope: string | null;
   viewMode: ViewMode;
 }
 

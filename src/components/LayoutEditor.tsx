@@ -354,13 +354,17 @@ export const LayoutEditor: React.FC = () => {
           <Text x={10} y={10} text={`Terreno: ${branch.name} (${branchWidth}x${branchHeight}cm)`} fontSize={24} fill="#475569" listening={false} />
 
           {/* Rooms */}
-          {branch.rooms.filter(room => (room.level || 0) === activeLevel).map(room => (
+          {branch.rooms.filter(room => (room.level || 0) <= activeLevel).sort((a, b) => (a.level || 0) - (b.level || 0)).map(room => {
+            const isLowerFloor = (room.level || 0) < activeLevel;
+            return (
             <Group 
               key={room.id} 
               id={room.id} 
               x={room.x || 50} 
               y={room.y || 50} 
-              draggable={isEditMode && isAdmin && !room.isLocked} dragBoundFunc={snapToGrid}
+              opacity={isLowerFloor ? 0.3 : 1}
+              listening={!isLowerFloor}
+              draggable={!isLowerFloor && isEditMode && isAdmin && !room.isLocked} dragBoundFunc={snapToGrid}
               onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(room.id); }}
               onDragEnd={(e) => {
@@ -450,8 +454,8 @@ export const LayoutEditor: React.FC = () => {
                         draggable={isEditMode && isAdmin && !rack.isLocked} dragBoundFunc={snapToGrid}
                         onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                         onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
-                        onDblClick={() => useStore.getState().setActiveRack(rack.id)}
-                        onDblTap={() => useStore.getState().setActiveRack(rack.id)}
+                        onDblClick={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
+                        onDblTap={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
                         onDragEnd={(e) => {
                           e.cancelBubble = true;
                           if (e.target.id() === rack.id) {
@@ -504,8 +508,8 @@ export const LayoutEditor: React.FC = () => {
                  draggable={isEditMode && isAdmin && !rack.isLocked} dragBoundFunc={snapToGrid}
                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
-                 onDblClick={() => useStore.getState().setActiveRack(rack.id)}
-                 onDblTap={() => useStore.getState().setActiveRack(rack.id)}
+                 onDblClick={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
+                 onDblTap={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
                  onDragEnd={(e) => {
                    e.cancelBubble = true;
                    if (e.target.id() === rack.id) {
@@ -545,7 +549,8 @@ export const LayoutEditor: React.FC = () => {
                </Group>
               ))}
             </Group>
-          ))}
+            );
+          })}
           
           <Transformer 
             ref={trRef} 

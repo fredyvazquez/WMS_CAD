@@ -15,7 +15,7 @@ const getCellHeatmapColor = (value: number, max: number) => {
 };
 
 export const RackFrontalView: React.FC = () => {
-  const { branches, activeBranchId, activeRoomId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery, currentUserRole, viewMode } = useStore();
+  const { branches, activeBranchId, activeRackId, setActiveRack, articles, updateCellItems, searchQuery, currentUserRole, viewMode } = useStore();
   const isVentas = currentUserRole === 'VENTAS';
   const inventoryRecords = useAnalyzerStore(state => state.inventoryRecords);
 
@@ -31,14 +31,17 @@ export const RackFrontalView: React.FC = () => {
   React.useEffect(() => {
     if (!searchQuery) return;
     const branch = branches.find(b => b.id === activeBranchId);
-    const room = branch?.rooms.find(r => r.id === activeRoomId);
     let rack: any;
-    if (room) {
-      for (const area of room.areas) {
-        rack = area.racks.find(r => r.id === activeRackId);
+    if (branch) {
+      for (const r of branch.rooms) {
+        for (const area of r.areas) {
+          rack = area.racks.find(rk => rk.id === activeRackId);
+          if (rack) break;
+        }
+        if (rack) break;
+        rack = r.racks.find(rk => rk.id === activeRackId);
         if (rack) break;
       }
-      if (!rack) rack = room.racks.find(r => r.id === activeRackId);
     }
     if (!rack) return;
 
@@ -66,16 +69,18 @@ export const RackFrontalView: React.FC = () => {
   if (!activeRackId) return null;
 
   const branch = branches.find(b => b.id === activeBranchId);
-  const room = branch?.rooms.find(r => r.id === activeRoomId);
   
   let rack;
-  if (room) {
-    for (const area of room.areas) {
-      rack = area.racks.find(r => r.id === activeRackId);
+  let foundRoom;
+  if (branch) {
+    for (const r of branch.rooms) {
+      for (const area of r.areas) {
+        rack = area.racks.find(rk => rk.id === activeRackId);
+        if (rack) { foundRoom = r; break; }
+      }
       if (rack) break;
-    }
-    if (!rack) {
-      rack = room.racks.find(r => r.id === activeRackId);
+      rack = r.racks.find(rk => rk.id === activeRackId);
+      if (rack) { foundRoom = r; break; }
     }
   }
 
@@ -114,7 +119,7 @@ export const RackFrontalView: React.FC = () => {
           <div>
             <h2 className="text-xl font-bold text-slate-800">Vista Frontal: {rack.name}</h2>
             <p className="text-sm text-slate-500">
-              {branch?.name} &gt; {room?.name} &gt; Dimensiones: {rack.width}x{rack.height}x{rack.depth} cm
+              {branch?.name} &gt; {foundRoom?.name} &gt; Dimensiones: {rack.width}x{rack.height}x{rack.depth} cm
             </p>
           </div>
           <button 
