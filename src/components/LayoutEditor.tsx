@@ -95,18 +95,95 @@ export const LayoutEditor: React.FC = () => {
 
   const branch = branches.find(b => b.id === activeBranchId);
 
-  const checkDeselect = (e: any) => {
-    // deselect when clicked on empty area
-    const clickedOnEmpty = e.target === e.target.getStage();
-    if (clickedOnEmpty) {
-      setSelectedShapeId(null);
-    }
-  };
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
   const [stageScale, setStageScale] = useState(window.innerWidth < 768 ? 0.3 : 1);
   const [stagePos, setStagePos] = useState({ x: window.innerWidth < 768 ? 20 : 50, y: 50 }); // Start slightly offset to see room border
   const [hasAutoZoomedInit, setHasAutoZoomedInit] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
+
+  const getRelativePointerPosition = (node: any) => {
+    const transform = node.getAbsoluteTransform().copy();
+    transform.invert();
+    const pos = node.getStage().getPointerPosition();
+    return transform.point(pos);
+  };
+
+  const handleStageMouseDown = (e: any) => {
+    // If we click on an empty area AND we hold Ctrl, start selection
+    const clickedOnEmpty = e.target === e.target.getStage() || e.target.id() === 'branch-bg';
+    if (clickedOnEmpty) {
+      if (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey) {
+        // Start selection
+        e.target.getStage().draggable(false);
+        const pos = getRelativePointerPosition(layerRef.current);
+        if (pos) {
+          setSelectionRect({ x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y });
+        }
+      } else {
+        useStore.getState().setSelectedShapeId(null);
+        e.target.getStage().draggable(true);
+      }
+    }
+  };
+
+  const handleStageMouseMove = () => {
+    if (selectionRect && layerRef.current) {
+      const pos = getRelativePointerPosition(layerRef.current);
+      if (pos) {
+        setSelectionRect(prev => prev ? { ...prev, x2: pos.x, y2: pos.y } : null);
+      }
+    }
+  };
+
+  const handleStageMouseUp = (e: any) => {
+    if (selectionRect && layerRef.current) {
+      const stage = e.target.getStage();
+      stage.draggable(true);
+      
+      const box = {
+        x: Math.min(selectionRect.x1, selectionRect.x2),
+        y: Math.min(selectionRect.y1, selectionRect.y2),
+        width: Math.abs(selectionRect.x1 - selectionRect.x2),
+        height: Math.abs(selectionRect.y1 - selectionRect.y2),
+      };
+
+      if (box.width > 5 && box.height > 5 && branch) {
+        const newSelectedIds: string[] = [];
+        
+        // Find all shapes that intersect with the box
+        // We will check all Racks, Areas, and Rooms.
+        const allSelectableIds: string[] = [];
+        branch.rooms.forEach(r => {
+           allSelectableIds.push(r.id);
+           r.areas.forEach(a => {
+              allSelectableIds.push(a.id);
+              a.racks.forEach(rk => allSelectableIds.push(rk.id));
+           });
+           r.racks.forEach(rk => allSelectableIds.push(rk.id));
+        });
+
+        allSelectableIds.forEach(id => {
+           const node = layerRef.current.findOne(`#${id}`);
+           if (node) {
+             const nodeRect = node.getClientRect({ relativeTo: layerRef.current });
+             // Check intersection
+             if (!(
+                nodeRect.x > box.x + box.width ||
+                nodeRect.x + nodeRect.width < box.x ||
+                nodeRect.y > box.y + box.height ||
+                nodeRect.y + nodeRect.height < box.y
+             )) {
+               newSelectedIds.push(id);
+             }
+           }
+        });
+
+        useStore.getState().setSelectedShapeIds(newSelectedIds);
+      }
+      setSelectionRect(null);
+    }
+  };
 
   React.useEffect(() => {
     if (!branch || !containerRef.current || hasAutoZoomedInit) return;
@@ -324,8 +401,12 @@ export const LayoutEditor: React.FC = () => {
       <Stage 
         width={dimensions.width} 
         height={dimensions.height} 
-        onMouseDown={checkDeselect}
-        onTouchStart={checkDeselect}
+        onMouseDown={handleStageMouseDown}
+        onMouseMove={handleStageMouseMove}
+        onMouseUp={handleStageMouseUp}
+        onTouchStart={handleStageMouseDown}
+        onTouchMove={handleStageMouseMove}
+        onTouchEnd={handleStageMouseUp}
         onWheel={handleWheel}
         draggable
         onDragEnd={(e) => {
@@ -645,7 +726,20 @@ export const LayoutEditor: React.FC = () => {
             );
           })}
           
-          <Transformer 
+          {selectionRect && (
+            <Rect
+              x={Math.min(selectionRect.x1, selectionRect.x2)}
+              y={Math.min(selectionRect.y1, selectionRect.y2)}
+              width={Math.abs(selectionRect.x1 - selectionRect.x2)}
+              height={Math.abs(selectionRect.y1 - selectionRect.y2)}
+              fill="rgba(59, 130, 246, 0.2)"
+              stroke="#3b82f6"
+              strokeWidth={1}
+              listening={false}
+            />
+          )}
+
+          <Transformer  
             ref={trRef} 
             boundBoxFunc={(oldBox, newBox) => {
               if (newBox.width < SNAP_SIZE || newBox.height < SNAP_SIZE) {

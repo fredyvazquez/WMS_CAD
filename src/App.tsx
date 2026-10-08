@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
+import { InventoryList } from './components/InventoryList';
 import { useStore } from './store/useStore';
-import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User, Copy } from 'lucide-react';
+import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User, Copy, List } from 'lucide-react';
 
 function App() {
-  const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
+  const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER' | 'INVENTORY'>('LAYOUT');
   const [showPanel, setShowPanel] = useState(window.innerWidth >= 768);
   const articles = useStore(state => state.articles);
   const branches = useStore(state => state.branches);
@@ -51,10 +52,18 @@ function App() {
       return;
     }
     
-    // Match almacen[sucursal] or ventas[sucursal]
-    if (pw.startsWith('almacen') || pw.startsWith('ventas')) {
-      const role = pw.startsWith('almacen') ? 'ALMACEN' : 'VENTAS';
-      const branchQuery = pw.replace('almacen', '').replace('ventas', '').trim();
+    // Match admin[sucursal], almacen[sucursal] or ventas[sucursal]
+    if (pw.startsWith('admin') || pw.startsWith('almacen') || pw.startsWith('ventas')) {
+      let role: any = 'ADMIN';
+      let branchQuery = pw.replace('admin', '').trim();
+      
+      if (pw.startsWith('almacen')) {
+         role = 'ALMACEN';
+         branchQuery = pw.replace('almacen', '').trim();
+      } else if (pw.startsWith('ventas')) {
+         role = 'VENTAS';
+         branchQuery = pw.replace('ventas', '').trim();
+      }
       
       if (!branchQuery || branchQuery === '123') {
          // Legacy generic login
@@ -146,9 +155,14 @@ function App() {
         <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'LAYOUT' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Mapa 2D" onClick={() => setView('LAYOUT')}>
           <Map size={24} />
         </button>
+        {!isVentas && (
+          <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'INVENTORY' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Inventario" onClick={() => setView('INVENTORY')}>
+            <List size={24} />
+          </button>
+        )}
         {isAdmin && (
           <>
-            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos" onClick={() => setView('DATA')}>
+            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos Maestros" onClick={() => setView('DATA')}>
               <Package size={24} />
             </button>
             <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
@@ -236,7 +250,7 @@ function App() {
               <div className="mb-2">
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Sucursal</label>
-                  {isAdmin && <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>}
+                  {isAdmin && !userBranchScope && <button className="text-xs text-blue-600 hover:underline" onClick={() => addBranch("Nueva Sucursal")}>+ Agregar</button>}
                 </div>
                 <select 
                   className={`w-full p-1 border border-slate-300 rounded text-sm ${userBranchScope ? 'bg-slate-100 cursor-not-allowed opacity-70' : ''}`}
@@ -742,6 +756,8 @@ function App() {
               )}
             </div>
           </div>
+        ) : view === 'INVENTORY' ? (
+          <InventoryList />
         ) : view === 'ANALYZER' ? (
           <InventoryAnalyzer />
         ) : null}

@@ -12,9 +12,11 @@ interface WMSStore extends LayoutState {
   setArticles: (articles: Article[]) => void;
   setSelectedShapeId: (id: string | null) => void;
   selectedShapeIds: string[];
+  setSelectedShapeIds: (ids: string[]) => void;
   toggleShapeSelection: (id: string) => void;
   moveShapesByDelta: (ids: string[], dx: number, dy: number) => void;
   duplicateRack: (rackId: string) => void;
+  updateCellItemQuantity: (rackId: string, cellRow: number, cellCol: number, articleId: string, delta: number) => void;
   updateRackProperties: (rackId: string, updates: Partial<Rack>) => void;
   updateRackPosition: (branchId: string, roomId: string, areaId: string | null, rackId: string, x: number, y: number, rotation: number) => void;
   addRack: (branchId: string, roomId: string) => void;
@@ -104,6 +106,7 @@ export const useStore = create<WMSStore>()(
   setActiveRack: (activeRackId) => set({ activeRackId }),
   setActiveLevel: (activeLevel) => set({ activeLevel }),
   setSelectedShapeId: (selectedShapeId) => set({ selectedShapeId, selectedShapeIds: selectedShapeId ? [selectedShapeId] : [] }),
+  setSelectedShapeIds: (ids) => set({ selectedShapeIds: ids, selectedShapeId: ids.length > 0 ? ids[ids.length - 1] : null }),
   toggleShapeSelection: (id) => set((state) => {
     if (state.selectedShapeIds.includes(id)) {
       const newIds = state.selectedShapeIds.filter(x => x !== id);
@@ -158,6 +161,44 @@ export const useStore = create<WMSStore>()(
             };
             r.racks.push(newRack);
             return { branches: newBranches, selectedShapeId: newRack.id, selectedShapeIds: [newRack.id] };
+        }
+      }
+    }
+    return state;
+  }),
+  updateCellItemQuantity: (rackId, cellRow, cellCol, articleId, delta) => set((state) => {
+    const newBranches = [...state.branches];
+    for (const b of newBranches) {
+      for (const r of b.rooms) {
+        for (const a of r.areas) {
+          const rack = a.racks.find(rk => rk.id === rackId);
+          if (rack && rack.cells) {
+            const cell = rack.cells.find(c => c.row === cellRow && c.col === cellCol);
+            if (cell && cell.items) {
+               const item = cell.items.find((i: any) => i.articleId === articleId);
+               if (item) {
+                 item.quantity = Math.max(0, (item.quantity || 0) + delta);
+                 if (item.quantity === 0) {
+                    cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
+                 }
+               }
+            }
+            return { branches: newBranches };
+          }
+        }
+        const rack = r.racks.find(rk => rk.id === rackId);
+        if (rack && rack.cells) {
+          const cell = rack.cells.find(c => c.row === cellRow && c.col === cellCol);
+          if (cell && cell.items) {
+             const item = cell.items.find((i: any) => i.articleId === articleId);
+             if (item) {
+               item.quantity = Math.max(0, (item.quantity || 0) + delta);
+               if (item.quantity === 0) {
+                  cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
+               }
+             }
+          }
+          return { branches: newBranches };
         }
       }
     }
