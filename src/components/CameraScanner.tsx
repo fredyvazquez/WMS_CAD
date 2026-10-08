@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { X, Camera, CheckCircle2 } from 'lucide-react';
 
 export const CameraScanner: React.FC<{
@@ -11,7 +11,16 @@ export const CameraScanner: React.FC<{
   const [totalScanned, setTotalScanned] = useState(0);
 
   useEffect(() => {
-    const html5QrCode = new Html5Qrcode("reader", { verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
+    const html5QrCode = new Html5Qrcode("reader", { 
+      verbose: false, 
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.UPC_A
+      ],
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true } 
+    });
 
     let lastScanned = '';
     let lastScanTime = 0;
