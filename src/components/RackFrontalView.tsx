@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { useAnalyzerStore } from '../store/useAnalyzerStore';
-import { X, Save, Plus, Trash2, ScanBarcode } from 'lucide-react';
+import { X, Save, Plus, Trash2, ScanBarcode, Camera } from 'lucide-react';
+import { CameraScanner } from './CameraScanner';
 
 // Helper to get color between blue (cold) and red (hot)
 const getCellHeatmapColor = (value: number, max: number) => {
@@ -29,6 +30,7 @@ export const RackFrontalView: React.FC = () => {
   const [editingItem, setEditingItem] = useState<{id: string, articleId: string, quantity: number} | null>(null);
 
   const [fastScanValue, setFastScanValue] = useState('');
+  const [showCamera, setShowCamera] = useState(false);
 
   React.useEffect(() => {
     if (!searchQuery) return;
@@ -88,31 +90,33 @@ export const RackFrontalView: React.FC = () => {
 
   if (!rack) return null;
 
+  const processScannedCode = (code: string) => {
+    if (!selectedCell || !rack) return;
+    
+    const newItems = [...selectedCell.items];
+    const existingIndex = newItems.findIndex(i => i.articleId.toLowerCase() === code.toLowerCase());
+    
+    if (existingIndex >= 0) {
+      newItems[existingIndex] = {
+        ...newItems[existingIndex],
+        quantity: newItems[existingIndex].quantity + 1
+      };
+    } else {
+      newItems.push({
+        id: Date.now().toString() + Math.random().toString(36).substring(7),
+        articleId: code,
+        quantity: 1
+      });
+    }
+    
+    updateCellItems(rack.id, selectedCell.row, selectedCell.col, newItems);
+    setSelectedCell({...selectedCell, items: newItems});
+  };
+
   const handleFastScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && fastScanValue.trim() !== '') {
       e.preventDefault();
-      const code = fastScanValue.trim();
-      
-      if (!selectedCell || !rack) return;
-      
-      const newItems = [...selectedCell.items];
-      const existingIndex = newItems.findIndex(i => i.articleId.toLowerCase() === code.toLowerCase());
-      
-      if (existingIndex >= 0) {
-        newItems[existingIndex] = {
-          ...newItems[existingIndex],
-          quantity: newItems[existingIndex].quantity + 1
-        };
-      } else {
-        newItems.push({
-          id: Date.now().toString() + Math.random().toString(36).substring(7),
-          articleId: code, // Barcode/Clave scanned
-          quantity: 1
-        });
-      }
-      
-      updateCellItems(rack.id, selectedCell.row, selectedCell.col, newItems);
-      setSelectedCell({...selectedCell, items: newItems});
+      processScannedCode(fastScanValue.trim());
       setFastScanValue('');
     }
   };
@@ -297,7 +301,12 @@ export const RackFrontalView: React.FC = () => {
 
               {!isVentas && (
                 <div className="p-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
-                  <label className="text-xs font-bold text-slate-700 mb-1 flex items-center gap-1"><ScanBarcode size={14}/> Escáner Rápido</label>
+                  <label className="text-xs font-bold text-slate-700 mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1"><ScanBarcode size={14}/> Escáner Rápido</span>
+                    <button onClick={() => setShowCamera(true)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1.5 rounded shadow hover:bg-blue-700 transition-colors">
+                      <Camera size={14}/> Usar Cámara
+                    </button>
+                  </label>
                   <input 
                     type="text" 
                     autoFocus
@@ -432,6 +441,7 @@ export const RackFrontalView: React.FC = () => {
           )}
         </div>
       </div>
+      {showCamera && <CameraScanner onScan={processScannedCode} onClose={() => setShowCamera(false)} />}
     </div>
   );
 };
