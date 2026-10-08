@@ -3,7 +3,7 @@ import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
 import { useStore } from './store/useStore';
-import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User } from 'lucide-react';
+import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User, Copy } from 'lucide-react';
 
 function App() {
   const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER'>('LAYOUT');
@@ -320,11 +320,16 @@ function App() {
                         <div className="mt-4 border-t border-slate-200 pt-4">
                           <div className="flex justify-between items-center mb-2">
                             <h3 className="text-sm font-bold text-blue-600">Propiedades del Rack</h3>
-                            <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700" title="Eliminar Rack">
-                              <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <div className="space-y-2 text-sm">
+                            <div className="flex gap-3">
+                              <button onClick={() => useStore.getState().duplicateRack(selectedData.id)} className="text-blue-500 hover:text-blue-700" title="Duplicar Rack">
+                                <Copy size={16} />
+                              </button>
+                              <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700" title="Eliminar Rack">
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-2 text-sm">
                         <div>
                           <label className="block text-slate-500 mb-1">Nombre</label>
                           <input 

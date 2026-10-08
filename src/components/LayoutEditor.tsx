@@ -13,7 +13,7 @@ const getHeatmapColor = (value: number, max: number) => {
 };
 
 export const LayoutEditor: React.FC = () => {
-  const { branches, activeBranchId, selectedShapeId, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel, currentUserRole, viewMode } = useStore();
+  const { branches, activeBranchId, selectedShapeIds, setSelectedShapeId, searchQuery, articles, isEditMode, activeLevel, currentUserRole, viewMode } = useStore();
   const isAdmin = currentUserRole === 'ADMIN';
   const inventoryRecords = useAnalyzerStore(state => state.inventoryRecords);
 
@@ -22,7 +22,7 @@ export const LayoutEditor: React.FC = () => {
   }, [inventoryRecords]);
 
   const getRackStatusColor = (rack: any) => {
-    if (selectedShapeId === rack.id) return '#3b82f6'; // Selected Blue
+    if (selectedShapeIds.includes(rack.id)) return '#3b82f6'; // Selected Blue
     if (!rack.cells || rack.cells.length === 0) {
        return viewMode === 'EMPTY' ? '#22c55e' : '#0f172a'; // Green if searching empty, else Slate
     }
@@ -259,18 +259,21 @@ export const LayoutEditor: React.FC = () => {
 
   const trRef = useRef<any>(null);
   const layerRef = useRef<any>(null);
+  const dragStartNodes = useRef<Record<string, {x: number, y: number}>>({});
 
   React.useEffect(() => {
-    if (isEditMode && isAdmin && selectedShapeId && trRef.current && layerRef.current) {
-      const node = layerRef.current.findOne(`#${selectedShapeId}`);
-      if (node && node.draggable()) {
-        trRef.current.nodes([node]);
+    if (isEditMode && isAdmin && selectedShapeIds && selectedShapeIds.length > 0 && trRef.current && layerRef.current) {
+      const nodes = selectedShapeIds.map(id => layerRef.current.findOne(`#${id}`)).filter((node: any) => node && node.draggable());
+      if (nodes.length > 0) {
+        trRef.current.nodes(nodes);
         trRef.current.getLayer().batchDraw();
+      } else {
+        trRef.current.nodes([]);
       }
     } else if (trRef.current) {
       trRef.current.nodes([]);
     }
-  }, [selectedShapeId, isEditMode, isAdmin]);
+  }, [selectedShapeIds, isEditMode, isAdmin]);
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -391,12 +394,12 @@ export const LayoutEditor: React.FC = () => {
                 height={room.height || 800}
                 fill={room.color || "#ffffff"}
                 opacity={0.6}
-                stroke={selectedShapeId === room.id ? "#3b82f6" : "#94a3b8"}
-                strokeWidth={selectedShapeId === room.id ? 4 : 2}
+                stroke={selectedShapeIds.includes(room.id) ? "#3b82f6" : "#94a3b8"}
+                strokeWidth={selectedShapeIds.includes(room.id) ? 4 : 2}
                 dash={[10, 10]}
               />
               <Text x={10} y={10} text={room.name} fontSize={20} fill="#64748b" />
-              {selectedShapeId === room.id && (
+              {selectedShapeIds.includes(room.id) && (
                 <Text x={10} y={35} text={`L: ${Math.round(room.width || 1000)}cm x F: ${Math.round(room.height || 800)}cm`} fontSize={14} fill="#2563eb" fontStyle="bold" />
               )}
               
@@ -408,8 +411,22 @@ export const LayoutEditor: React.FC = () => {
                   x={area.x} 
                   y={area.y} 
                   draggable={isEditMode && isAdmin && !area.isLocked} dragBoundFunc={snapToGrid}
-                  onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
-                  onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(area.id); }}
+                  onClick={(e) => { 
+                    e.cancelBubble = true; 
+                    if (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey) {
+                       useStore.getState().toggleShapeSelection(area.id);
+                    } else {
+                       setSelectedShapeId(area.id); 
+                    }
+                  }}
+                  onTap={(e) => { 
+                    e.cancelBubble = true; 
+                    if (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey) {
+                       useStore.getState().toggleShapeSelection(area.id);
+                    } else {
+                       setSelectedShapeId(area.id); 
+                    }
+                  }}
                   onDragEnd={(e) => {
                     e.cancelBubble = true;
                     if (e.target.id() === area.id) {
@@ -434,12 +451,12 @@ export const LayoutEditor: React.FC = () => {
                     height={area.height}
                     fill={area.color || "rgba(255, 255, 0, 0.2)"}
                     opacity={0.6}
-                    stroke={selectedShapeId === area.id ? "#3b82f6" : "#cbd5e1"}
-                    strokeWidth={selectedShapeId === area.id ? 3 : 1}
+                    stroke={selectedShapeIds.includes(area.id) ? "#3b82f6" : "#cbd5e1"}
+                    strokeWidth={selectedShapeIds.includes(area.id) ? 3 : 1}
                     dash={[5, 5]}
                   />
                   <Text x={5} y={5} text={area.name} fontSize={16} fill="#475569" />
-                  {selectedShapeId === area.id && (
+                  {selectedShapeIds.includes(area.id) && (
                     <Text x={5} y={25} text={`L: ${Math.round(area.width)}cm x F: ${Math.round(area.height)}cm`} fontSize={14} fill="#2563eb" fontStyle="bold" />
                   )}
                   
@@ -452,14 +469,59 @@ export const LayoutEditor: React.FC = () => {
                         y={rack.y}
                         rotation={rack.rotation}
                         draggable={isEditMode && isAdmin && !rack.isLocked} dragBoundFunc={snapToGrid}
-                        onClick={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
-                        onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
+                        onClick={(e) => { 
+                          e.cancelBubble = true; 
+                          if (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey) {
+                             useStore.getState().toggleShapeSelection(rack.id);
+                          } else {
+                             setSelectedShapeId(rack.id); 
+                          }
+                        }}
+                        onTap={(e) => { 
+                          e.cancelBubble = true; 
+                          if (e.evt.ctrlKey || e.evt.metaKey || e.evt.shiftKey) {
+                             useStore.getState().toggleShapeSelection(rack.id);
+                          } else {
+                             setSelectedShapeId(rack.id); 
+                          }
+                        }}
                         onDblClick={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
                         onDblTap={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
+                        onDragStart={(e) => {
+                          e.cancelBubble = true;
+                          if (selectedShapeIds.includes(rack.id)) {
+                            dragStartNodes.current = {};
+                            selectedShapeIds.forEach(id => {
+                              const node = layerRef.current?.findOne(`#${id}`);
+                              if (node) dragStartNodes.current[id] = { x: node.x(), y: node.y() };
+                            });
+                          }
+                        }}
+                        onDragMove={(e) => {
+                          if (selectedShapeIds.includes(rack.id) && dragStartNodes.current[rack.id]) {
+                            const dx = e.target.x() - dragStartNodes.current[rack.id].x;
+                            const dy = e.target.y() - dragStartNodes.current[rack.id].y;
+                            selectedShapeIds.forEach(id => {
+                              if (id !== rack.id && dragStartNodes.current[id]) {
+                                const node = layerRef.current?.findOne(`#${id}`);
+                                if (node) {
+                                  node.x(dragStartNodes.current[id].x + dx);
+                                  node.y(dragStartNodes.current[id].y + dy);
+                                }
+                              }
+                            });
+                          }
+                        }}
                         onDragEnd={(e) => {
                           e.cancelBubble = true;
                           if (e.target.id() === rack.id) {
-                            useStore.getState().updateRackPosition(branch.id, room.id, area.id, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                            if (selectedShapeIds.includes(rack.id) && dragStartNodes.current[rack.id]) {
+                              const dx = e.target.x() - dragStartNodes.current[rack.id].x;
+                              const dy = e.target.y() - dragStartNodes.current[rack.id].y;
+                              useStore.getState().moveShapesByDelta(selectedShapeIds, Math.round(dx), Math.round(dy));
+                            } else {
+                              useStore.getState().updateRackPosition(branch.id, room.id, area.id, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                            }
                           }
                         }}
                         onTransform={(e) => {
@@ -489,7 +551,7 @@ export const LayoutEditor: React.FC = () => {
                           fill={getRackStatusColor(rack)}
                         />
                         <Text x={5} y={5} text={rack.name} fontSize={14} fill="#ffffff" />
-                        {selectedShapeId === rack.id && (
+                        {selectedShapeIds.includes(rack.id) && (
                           <Text x={0} y={-20} text={`L: ${Math.round(rack.width)}cm x F: ${Math.round(rack.depth)}cm | Rot: ${Math.round(rack.rotation)}°`} fontSize={12} fill="#ef4444" fontStyle="bold" />
                         )}
                       </Group>
@@ -510,10 +572,41 @@ export const LayoutEditor: React.FC = () => {
                  onTap={(e) => { e.cancelBubble = true; setSelectedShapeId(rack.id); }}
                  onDblClick={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
                  onDblTap={(e) => { e.cancelBubble = true; useStore.getState().setActiveRack(rack.id); }}
+                 onDragStart={(e) => {
+                   e.cancelBubble = true;
+                   if (selectedShapeIds.includes(rack.id)) {
+                     dragStartNodes.current = {};
+                     selectedShapeIds.forEach(id => {
+                       const node = layerRef.current?.findOne(`#${id}`);
+                       if (node) dragStartNodes.current[id] = { x: node.x(), y: node.y() };
+                     });
+                   }
+                 }}
+                 onDragMove={(e) => {
+                   if (selectedShapeIds.includes(rack.id) && dragStartNodes.current[rack.id]) {
+                     const dx = e.target.x() - dragStartNodes.current[rack.id].x;
+                     const dy = e.target.y() - dragStartNodes.current[rack.id].y;
+                     selectedShapeIds.forEach(id => {
+                       if (id !== rack.id && dragStartNodes.current[id]) {
+                         const node = layerRef.current?.findOne(`#${id}`);
+                         if (node) {
+                           node.x(dragStartNodes.current[id].x + dx);
+                           node.y(dragStartNodes.current[id].y + dy);
+                         }
+                       }
+                     });
+                   }
+                 }}
                  onDragEnd={(e) => {
                    e.cancelBubble = true;
                    if (e.target.id() === rack.id) {
-                     useStore.getState().updateRackPosition(branch.id, room.id, null, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                     if (selectedShapeIds.includes(rack.id) && dragStartNodes.current[rack.id]) {
+                       const dx = e.target.x() - dragStartNodes.current[rack.id].x;
+                       const dy = e.target.y() - dragStartNodes.current[rack.id].y;
+                       useStore.getState().moveShapesByDelta(selectedShapeIds, Math.round(dx), Math.round(dy));
+                     } else {
+                       useStore.getState().updateRackPosition(branch.id, room.id, null, rack.id, Math.round(e.target.x()), Math.round(e.target.y()), e.target.rotation());
+                     }
                    }
                  }}
                  onTransform={(e) => {
@@ -543,7 +636,7 @@ export const LayoutEditor: React.FC = () => {
                    fill={getRackStatusColor(rack)}
                  />
                  <Text x={5} y={5} text={rack.name} fontSize={14} fill="#ffffff" />
-                 {selectedShapeId === rack.id && (
+                 {selectedShapeIds.includes(rack.id) && (
                    <Text x={0} y={-20} text={`L: ${Math.round(rack.width)}cm x F: ${Math.round(rack.depth)}cm | Rot: ${Math.round(rack.rotation)}°`} fontSize={12} fill="#ef4444" fontStyle="bold" />
                  )}
                </Group>

@@ -11,6 +11,10 @@ interface WMSStore extends LayoutState {
   setActiveLevel: (level: number) => void;
   setArticles: (articles: Article[]) => void;
   setSelectedShapeId: (id: string | null) => void;
+  selectedShapeIds: string[];
+  toggleShapeSelection: (id: string) => void;
+  moveShapesByDelta: (ids: string[], dx: number, dy: number) => void;
+  duplicateRack: (rackId: string) => void;
   updateRackProperties: (rackId: string, updates: Partial<Rack>) => void;
   updateRackPosition: (branchId: string, roomId: string, areaId: string | null, rackId: string, x: number, y: number, rotation: number) => void;
   addRack: (branchId: string, roomId: string) => void;
@@ -82,6 +86,7 @@ export const useStore = create<WMSStore>()(
   activeRackId: null,
   activeLevel: 0,
   selectedShapeId: null,
+  selectedShapeIds: [],
   articles: [],
   searchQuery: '',
   isEditMode: true,
@@ -98,7 +103,96 @@ export const useStore = create<WMSStore>()(
   setActiveRoom: (activeRoomId) => set({ activeRoomId }),
   setActiveRack: (activeRackId) => set({ activeRackId }),
   setActiveLevel: (activeLevel) => set({ activeLevel }),
-  setSelectedShapeId: (selectedShapeId) => set({ selectedShapeId }),
+  setSelectedShapeId: (selectedShapeId) => set({ selectedShapeId, selectedShapeIds: selectedShapeId ? [selectedShapeId] : [] }),
+  toggleShapeSelection: (id) => set((state) => {
+    if (state.selectedShapeIds.includes(id)) {
+      const newIds = state.selectedShapeIds.filter(x => x !== id);
+      return { selectedShapeIds: newIds, selectedShapeId: newIds.length > 0 ? newIds[newIds.length - 1] : null };
+    } else {
+      const newIds = [...state.selectedShapeIds, id];
+      return { selectedShapeIds: newIds, selectedShapeId: id };
+    }
+  }),
+  duplicateRack: (rackId) => set((state) => {
+    const newBranches = [...state.branches];
+    for (const b of newBranches) {
+      for (const r of b.rooms) {
+        // Try to find in areas
+        for (const a of r.areas) {
+          const rackIdx = a.racks.findIndex(rk => rk.id === rackId);
+          if (rackIdx !== -1) {
+            const original = a.racks[rackIdx];
+            let newName = `${original.name} (Copia)`;
+            const match = original.name.match(/^(.*?)(\d+)$/);
+            if (match) {
+               newName = `${match[1]}${parseInt(match[2]) + 1}`;
+            }
+            const newRack = {
+              ...original,
+              id: `rack-${Date.now()}`,
+              name: newName,
+              x: original.x + 20,
+              y: original.y + 20,
+              cells: [] // Empty inventory!
+            };
+            a.racks.push(newRack);
+            return { branches: newBranches, selectedShapeId: newRack.id, selectedShapeIds: [newRack.id] };
+          }
+        }
+        // Try to find in room
+        const rackIdx = r.racks.findIndex(rk => rk.id === rackId);
+        if (rackIdx !== -1) {
+            const original = r.racks[rackIdx];
+            let newName = `${original.name} (Copia)`;
+            const match = original.name.match(/^(.*?)(\d+)$/);
+            if (match) {
+               newName = `${match[1]}${parseInt(match[2]) + 1}`;
+            }
+            const newRack = {
+              ...original,
+              id: `rack-${Date.now()}`,
+              name: newName,
+              x: original.x + 20,
+              y: original.y + 20,
+              cells: [] // Empty inventory!
+            };
+            r.racks.push(newRack);
+            return { branches: newBranches, selectedShapeId: newRack.id, selectedShapeIds: [newRack.id] };
+        }
+      }
+    }
+    return state;
+  }),
+  moveShapesByDelta: (ids, dx, dy) => set((state) => {
+    const newBranches = [...state.branches];
+    for (const b of newBranches) {
+      for (const r of b.rooms) {
+        if (ids.includes(r.id)) {
+          r.x = (r.x || 0) + dx;
+          r.y = (r.y || 0) + dy;
+        }
+        for (const a of r.areas) {
+          if (ids.includes(a.id)) {
+            a.x += dx;
+            a.y += dy;
+          }
+          for (const rack of a.racks) {
+            if (ids.includes(rack.id)) {
+              rack.x += dx;
+              rack.y += dy;
+            }
+          }
+        }
+        for (const rack of r.racks) {
+          if (ids.includes(rack.id)) {
+            rack.x += dx;
+            rack.y += dy;
+          }
+        }
+      }
+    }
+    return { branches: newBranches };
+  }),
   setArticles: (articles) => set({ articles }),
   autoAssignDemo: () => set((state) => {
     // Randomly assign articles to empty cells across all racks to demonstrate the heat map
