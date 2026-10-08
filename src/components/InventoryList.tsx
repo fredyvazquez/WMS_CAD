@@ -1,10 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { Search, Plus, Minus, PackageOpen } from 'lucide-react';
+import { Search, Plus, Minus, PackageOpen, ArrowUpDown, Map } from 'lucide-react';
 
-export const InventoryList: React.FC = () => {
-  const { branches, articles, userBranchScope, updateCellItemQuantity } = useStore();
+interface InventoryListProps {
+  onNavigateToMap: () => void;
+}
+
+type SortKey = 'branchName' | 'locationLabel' | 'articleId' | 'description' | 'quantity';
+
+export const InventoryList: React.FC<InventoryListProps> = ({ onNavigateToMap }) => {
+  const { branches, articles, userBranchScope, updateCellItemQuantity, setActiveBranch, setActiveRoom, setSelectedShapeId, setActiveRack } = useStore();
   const [searchFilter, setSearchFilter] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
 
   // Extract all inventory locations
   const inventoryItems = useMemo(() => {
@@ -13,6 +20,7 @@ export const InventoryList: React.FC = () => {
       branchName: string;
       roomId: string;
       roomName: string;
+      roomLevel: number;
       rackId: string;
       rackName: string;
       locationLabel: string;
@@ -44,6 +52,7 @@ export const InventoryList: React.FC = () => {
                   branchName: branch.name,
                   roomId: room.id,
                   roomName: room.name,
+                  roomLevel: room.level || 0,
                   rackId: rack.id,
                   rackName: rack.name,
                   locationLabel: `${rack.name} - F${cell.row} C${cell.col}`,
@@ -71,6 +80,7 @@ export const InventoryList: React.FC = () => {
                 branchName: branch.name,
                 roomId: room.id,
                 roomName: room.name,
+                roomLevel: room.level || 0,
                 rackId: rack.id,
                 rackName: rack.name,
                 locationLabel: `${rack.name} - F${cell.row} C${cell.col}`,
@@ -89,17 +99,51 @@ export const InventoryList: React.FC = () => {
     return items;
   }, [branches, articles, userBranchScope]);
 
-  const filteredItems = useMemo(() => {
-    if (!searchFilter.trim()) return inventoryItems;
-    const lowerFilter = searchFilter.toLowerCase();
-    return inventoryItems.filter(i => 
-      i.articleId.toLowerCase().includes(lowerFilter) ||
-      i.description.toLowerCase().includes(lowerFilter) ||
-      i.rackName.toLowerCase().includes(lowerFilter) ||
-      i.branchName.toLowerCase().includes(lowerFilter) ||
-      i.roomName.toLowerCase().includes(lowerFilter)
-    );
-  }, [inventoryItems, searchFilter]);
+  const sortedAndFilteredItems = useMemo(() => {
+    let result = inventoryItems;
+
+    if (searchFilter.trim()) {
+      const lowerFilter = searchFilter.toLowerCase();
+      result = result.filter(i => 
+        i.articleId.toLowerCase().includes(lowerFilter) ||
+        i.description.toLowerCase().includes(lowerFilter) ||
+        i.rackName.toLowerCase().includes(lowerFilter) ||
+        i.branchName.toLowerCase().includes(lowerFilter) ||
+        i.roomName.toLowerCase().includes(lowerFilter)
+      );
+    }
+
+    if (sortConfig !== null) {
+      result = [...result].sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return result;
+  }, [inventoryItems, searchFilter, sortConfig]);
+
+  const requestSort = (key: SortKey) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortHeader = ({ label, sortKey, align = 'left' }: { label: string, sortKey: SortKey, align?: 'left' | 'center' }) => (
+    <th className={`p-4 font-bold text-sm cursor-pointer hover:bg-slate-700 transition-colors ${align === 'center' ? 'text-center' : 'text-left'}`} onClick={() => requestSort(sortKey)}>
+      <div className={`flex items-center gap-2 ${align === 'center' ? 'justify-center' : ''}`}>
+        {label}
+        <ArrowUpDown size={14} className={sortConfig?.key === sortKey ? 'text-blue-400' : 'text-slate-500'} />
+      </div>
+    </th>
+  );
 
   return (
     <div className="w-full h-full p-4 md:p-8 bg-slate-100 overflow-y-auto">
@@ -129,31 +173,45 @@ export const InventoryList: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead>
-                <tr className="bg-slate-800 text-white">
-                  <th className="p-4 font-bold text-sm rounded-tl-xl">Sucursal / Hab.</th>
-                  <th className="p-4 font-bold text-sm">Ubicación</th>
-                  <th className="p-4 font-bold text-sm">Código</th>
-                  <th className="p-4 font-bold text-sm">Descripción</th>
-                  <th className="p-4 font-bold text-sm text-center">Existencia</th>
+                <tr className="bg-slate-800 text-white select-none">
+                  <SortHeader label="Sucursal / Hab." sortKey="branchName" />
+                  <SortHeader label="Ubicación" sortKey="locationLabel" />
+                  <SortHeader label="Código" sortKey="articleId" />
+                  <SortHeader label="Descripción" sortKey="description" />
+                  <SortHeader label="Existencia" sortKey="quantity" align="center" />
                   <th className="p-4 font-bold text-sm text-center rounded-tr-xl">Ajustar</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.length === 0 ? (
+                {sortedAndFilteredItems.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-slate-500">
                       No se encontraron artículos asignados en las ubicaciones o el filtro no coincide.
                     </td>
                   </tr>
                 ) : (
-                  filteredItems.map((item, idx) => (
+                  sortedAndFilteredItems.map((item, idx) => (
                     <tr key={`${item.rackId}-${item.cellRow}-${item.cellCol}-${item.articleId}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                       <td className="p-4 text-sm">
                         <span className="block font-bold text-slate-700">{item.branchName}</span>
                         <span className="text-xs text-slate-500">{item.roomName}</span>
                       </td>
-                      <td className="p-4 text-sm font-mono text-blue-600 bg-blue-50/50">
-                        {item.locationLabel}
+                      <td className="p-4 text-sm font-mono bg-blue-50/50">
+                        <button 
+                          className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-bold"
+                          onClick={() => {
+                             useStore.getState().setActiveLevel(item.roomLevel);
+                             setActiveBranch(item.branchId);
+                             setActiveRoom(item.roomId);
+                             setSelectedShapeId(item.rackId);
+                             setActiveRack(item.rackId);
+                             onNavigateToMap();
+                          }}
+                          title="Ver en el Mapa"
+                        >
+                          <Map size={14} />
+                          {item.locationLabel}
+                        </button>
                       </td>
                       <td className="p-4 text-sm font-bold text-slate-700">
                         {item.articleId}

@@ -156,19 +156,19 @@ function App() {
           <Map size={24} />
         </button>
         {!isVentas && (
-          <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'INVENTORY' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Inventario" onClick={() => setView('INVENTORY')}>
-            <List size={24} />
-          </button>
-        )}
-        {isAdmin && (
           <>
-            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Artículos Maestros" onClick={() => setView('DATA')}>
+            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'INVENTORY' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Inventario Físico" onClick={() => setView('INVENTORY')}>
+              <List size={24} />
+            </button>
+            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'DATA' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Catálogo Maestro (Artículos)" onClick={() => setView('DATA')}>
               <Package size={24} />
             </button>
-            <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
-              <Activity size={24} />
-            </button>
           </>
+        )}
+        {isAdmin && (
+          <button className={`p-2 rounded-lg flex-shrink-0 ${view === 'ANALYZER' ? 'bg-blue-600' : 'hover:bg-slate-800'}`} title="Analizador" onClick={() => setView('ANALYZER')}>
+            <Activity size={24} />
+          </button>
         )}
         <button className="p-2 hover:bg-slate-800 rounded-lg flex-shrink-0" title="Buscador" onClick={() => {
           setView('LAYOUT');
@@ -757,7 +757,7 @@ function App() {
             </div>
           </div>
         ) : view === 'INVENTORY' ? (
-          <InventoryList />
+          <InventoryList onNavigateToMap={() => setView('LAYOUT')} />
         ) : view === 'ANALYZER' ? (
           <InventoryAnalyzer />
         ) : null}
