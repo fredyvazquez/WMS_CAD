@@ -19,9 +19,10 @@ export const CameraScanner: React.FC<{
     html5QrCode.start(
       { facingMode: "environment" },
       {
-        fps: 15,
-        // Wider box for long 1D barcodes
-        qrbox: { width: window.innerWidth > 350 ? 320 : 280, height: 150 }
+        fps: 15
+        // Eliminamos `qrbox` para que escanee todo el cuadro de video.
+        // Los códigos muy largos necesitan espacio en blanco a los lados (quiet zone),
+        // y el qrbox estaba recortando ese espacio.
       },
       (decodedText) => {
         const now = Date.now();
