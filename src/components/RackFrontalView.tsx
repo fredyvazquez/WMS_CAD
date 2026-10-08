@@ -28,6 +28,8 @@ export const RackFrontalView: React.FC = () => {
   // For the active edit form of an item inside the selected cell
   const [editingItem, setEditingItem] = useState<{id: string, articleId: string, quantity: number} | null>(null);
 
+  const [fastScanValue, setFastScanValue] = useState('');
+
   React.useEffect(() => {
     if (!searchQuery) return;
     const branch = branches.find(b => b.id === activeBranchId);
@@ -85,8 +87,6 @@ export const RackFrontalView: React.FC = () => {
   }
 
   if (!rack) return null;
-
-  const [fastScanValue, setFastScanValue] = useState('');
 
   const handleFastScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && fastScanValue.trim() !== '') {
