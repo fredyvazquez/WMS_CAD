@@ -334,11 +334,14 @@ function App() {
                         <div className="mt-4 border-t border-slate-200 pt-4">
                           <div className="flex justify-between items-center mb-2">
                             <h3 className="text-sm font-bold text-blue-600">Propiedades del Rack</h3>
-                            <div className="flex gap-3">
-                              <button onClick={() => useStore.getState().duplicateRack(selectedData.id)} className="text-blue-500 hover:text-blue-700" title="Duplicar Rack">
+                            <div className="flex gap-2">
+                              <button onClick={() => useStore.getState().setActiveRack(selectedData.id)} className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold shadow hover:bg-blue-700" title="Ver Vista Frontal">
+                                Abrir Frontal
+                              </button>
+                              <button onClick={() => useStore.getState().duplicateRack(selectedData.id)} className="text-blue-500 hover:text-blue-700 p-1" title="Duplicar Rack">
                                 <Copy size={16} />
                               </button>
-                              <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700" title="Eliminar Rack">
+                              <button onClick={() => { if(confirm("¿Eliminar rack?")) deleteRack(selectedData.id) }} className="text-red-500 hover:text-red-700 p-1" title="Eliminar Rack">
                                 <Trash2 size={16} />
                               </button>
                             </div>

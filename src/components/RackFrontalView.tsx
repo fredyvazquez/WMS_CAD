@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { useAnalyzerStore } from '../store/useAnalyzerStore';
-import { X, Save, Plus, Trash2 } from 'lucide-react';
+import { X, Save, Plus, Trash2, ScanBarcode } from 'lucide-react';
 
 // Helper to get color between blue (cold) and red (hot)
 const getCellHeatmapColor = (value: number, max: number) => {
@@ -86,6 +86,37 @@ export const RackFrontalView: React.FC = () => {
 
   if (!rack) return null;
 
+  const [fastScanValue, setFastScanValue] = useState('');
+
+  const handleFastScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && fastScanValue.trim() !== '') {
+      e.preventDefault();
+      const code = fastScanValue.trim();
+      
+      if (!selectedCell || !rack) return;
+      
+      const newItems = [...selectedCell.items];
+      const existingIndex = newItems.findIndex(i => i.articleId.toLowerCase() === code.toLowerCase());
+      
+      if (existingIndex >= 0) {
+        newItems[existingIndex] = {
+          ...newItems[existingIndex],
+          quantity: newItems[existingIndex].quantity + 1
+        };
+      } else {
+        newItems.push({
+          id: Date.now().toString() + Math.random().toString(36).substring(7),
+          articleId: code, // Barcode/Clave scanned
+          quantity: 1
+        });
+      }
+      
+      updateCellItems(rack.id, selectedCell.row, selectedCell.col, newItems);
+      setSelectedCell({...selectedCell, items: newItems});
+      setFastScanValue('');
+    }
+  };
+
   const handleSaveSubdivision = () => {
     if (!selectedCell || !editingItem || !editingItem.articleId) return;
     
@@ -130,15 +161,15 @@ export const RackFrontalView: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           {/* Content (Grid) */}
-          <div className="flex-1 p-8 bg-slate-100 overflow-auto flex items-center justify-center">
+          <div className="flex-1 p-4 md:p-8 bg-slate-100 overflow-auto flex items-start md:items-center justify-start md:justify-center">
             <div 
-              className="grid gap-2 p-4 bg-orange-600 rounded-lg shadow-lg border-8 border-orange-700"
+              className="grid gap-2 p-2 md:p-4 bg-orange-600 rounded-lg shadow-lg border-4 md:border-8 border-orange-700 m-auto"
               style={{ 
-                gridTemplateColumns: `repeat(${rack.cols}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${rack.rows}, minmax(0, 1fr))`,
-                width: '100%',
+                gridTemplateColumns: `repeat(${rack.cols}, minmax(80px, 1fr))`,
+                gridTemplateRows: `repeat(${rack.rows}, minmax(60px, 1fr))`,
+                minWidth: Math.max(100, rack.cols * 90) + 'px',
                 minHeight: '60vh'
               }}
             >
@@ -258,11 +289,27 @@ export const RackFrontalView: React.FC = () => {
 
           {/* Side Panel for Subdivisions */}
           {selectedCell && (
-            <div className="w-80 border-l border-slate-200 bg-white flex flex-col">
+            <div className="w-full h-[50vh] md:h-auto md:w-80 border-t md:border-t-0 md:border-l border-slate-200 bg-white flex flex-col">
               <div className="p-3 bg-blue-50 border-b border-blue-100 flex justify-between items-center">
                 <h3 className="font-bold text-blue-800 text-sm">Fila {selectedCell.row + 1} - Columna {selectedCell.col + 1}</h3>
                 <button onClick={() => setSelectedCell(null)} className="text-blue-500 hover:text-blue-700"><X size={16}/></button>
               </div>
+
+              {!isVentas && (
+                <div className="p-3 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+                  <label className="text-xs font-bold text-slate-700 mb-1 flex items-center gap-1"><ScanBarcode size={14}/> Escáner Rápido</label>
+                  <input 
+                    type="text" 
+                    autoFocus
+                    className="w-full p-2 border border-slate-300 rounded shadow-inner text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="Escanea el código de barras..."
+                    value={fastScanValue}
+                    onChange={(e) => setFastScanValue(e.target.value)}
+                    onKeyDown={handleFastScan}
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 leading-tight">Coloca el cursor aquí y escanea etiquetas para asignarlas al instante (+1).</p>
+                </div>
+              )}
 
               <div className="flex-1 overflow-auto p-3">
                 <h4 className="text-xs font-bold text-slate-500 mb-2 uppercase">Subdivisiones / Artículos</h4>
