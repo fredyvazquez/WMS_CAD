@@ -137,10 +137,10 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onNavigateToMap })
   };
 
   const SortHeader = ({ label, sortKey, align = 'left' }: { label: string, sortKey: SortKey, align?: 'left' | 'center' }) => (
-    <th className={`p-4 font-bold text-sm cursor-pointer hover:bg-slate-700 transition-colors ${align === 'center' ? 'text-center' : 'text-left'}`} onClick={() => requestSort(sortKey)}>
-      <div className={`flex items-center gap-2 ${align === 'center' ? 'justify-center' : ''}`}>
+    <th className={`p-2 md:p-4 font-bold text-xs md:text-sm cursor-pointer hover:bg-slate-700 transition-colors ${align === 'center' ? 'text-center' : 'text-left'} whitespace-nowrap`} onClick={() => requestSort(sortKey)}>
+      <div className={`flex items-center gap-1 md:gap-2 ${align === 'center' ? 'justify-center' : ''}`}>
         {label}
-        <ArrowUpDown size={14} className={sortConfig?.key === sortKey ? 'text-blue-400' : 'text-slate-500'} />
+        <ArrowUpDown size={12} className={`md:w-3.5 md:h-3.5 ${sortConfig?.key === sortKey ? 'text-blue-400' : 'text-slate-500'}`} />
       </div>
     </th>
   );
@@ -179,26 +179,26 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onNavigateToMap })
                   <SortHeader label="Código" sortKey="articleId" />
                   <SortHeader label="Descripción" sortKey="description" />
                   <SortHeader label="Existencia" sortKey="quantity" align="center" />
-                  <th className="p-4 font-bold text-sm text-center rounded-tr-xl">Ajustar</th>
+                  <th className="p-2 md:p-4 font-bold text-xs md:text-sm text-center rounded-tr-xl">Ajustar</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedAndFilteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-500">
+                    <td colSpan={6} className="p-4 md:p-8 text-center text-slate-500 text-sm">
                       No se encontraron artículos asignados en las ubicaciones o el filtro no coincide.
                     </td>
                   </tr>
                 ) : (
                   sortedAndFilteredItems.map((item, idx) => (
                     <tr key={`${item.rackId}-${item.cellRow}-${item.cellCol}-${item.articleId}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                      <td className="p-4 text-sm">
+                      <td className="p-2 md:p-4 text-xs md:text-sm">
                         <span className="block font-bold text-slate-700">{item.branchName}</span>
-                        <span className="text-xs text-slate-500">{item.roomName}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500">{item.roomName}</span>
                       </td>
-                      <td className="p-4 text-sm font-mono bg-blue-50/50">
+                      <td className="p-2 md:p-4 text-xs md:text-sm font-mono bg-blue-50/50">
                         <button 
-                          className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-bold"
+                          className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 font-bold whitespace-nowrap"
                           onClick={() => {
                              useStore.getState().setActiveLevel(item.roomLevel);
                              setActiveBranch(item.branchId);
@@ -209,36 +209,36 @@ export const InventoryList: React.FC<InventoryListProps> = ({ onNavigateToMap })
                           }}
                           title="Ver en el Mapa"
                         >
-                          <Map size={14} />
+                          <Map size={12} className="md:w-3.5 md:h-3.5" />
                           {item.locationLabel}
                         </button>
                       </td>
-                      <td className="p-4 text-sm font-bold text-slate-700">
+                      <td className="p-2 md:p-4 text-xs md:text-sm font-bold text-slate-700 whitespace-nowrap">
                         {item.articleId}
                       </td>
-                      <td className="p-4 text-sm truncate max-w-xs text-slate-600">
+                      <td className="p-2 md:p-4 text-xs md:text-sm truncate max-w-[120px] md:max-w-xs text-slate-600">
                         {item.description}
                       </td>
-                      <td className="p-4 text-center">
-                        <span className="inline-block bg-slate-800 text-white px-3 py-1 rounded-full font-bold text-sm">
+                      <td className="p-2 md:p-4 text-center">
+                        <span className="inline-block bg-slate-800 text-white px-2 py-0.5 md:px-3 md:py-1 rounded-full font-bold text-xs md:text-sm">
                           {item.quantity}
                         </span>
                       </td>
-                      <td className="p-4">
-                        <div className="flex items-center justify-center gap-2">
+                      <td className="p-2 md:p-4">
+                        <div className="flex items-center justify-center gap-1 md:gap-2">
                           <button 
                             onClick={() => updateCellItemQuantity(item.rackId, item.cellRow, item.cellCol, item.articleId, -1)}
-                            className="w-8 h-8 flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 rounded-full transition-colors"
+                            className="w-6 h-6 md:w-8 md:h-8 flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 rounded-full transition-colors"
                             title="Descontar 1"
                           >
-                            <Minus size={16} />
+                            <Minus size={14} />
                           </button>
                           <button 
                             onClick={() => updateCellItemQuantity(item.rackId, item.cellRow, item.cellCol, item.articleId, 1)}
-                            className="w-8 h-8 flex items-center justify-center bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
+                            className="w-6 h-6 md:w-8 md:h-8 flex items-center justify-center bg-green-100 text-green-600 hover:bg-green-200 rounded-full transition-colors"
                             title="Agregar 1"
                           >
-                            <Plus size={16} />
+                            <Plus size={14} />
                           </button>
                         </div>
                       </td>

@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Branch, Article, LayoutState, Rack, Room, Area } from '../types';
 import { supabase } from '../lib/supabase';
+import { threeWayMerge } from '../utils/merge';
+
+// Track the baseline state when we load from cloud so we can merge smartly
+let baselineState: { branches: Branch[], articles: Article[] } | null = null;
+
 
 interface WMSStore extends LayoutState {
   setBranches: (branches: Branch[]) => void;
@@ -559,17 +564,43 @@ export const useStore = create<WMSStore>()(
     set({ syncStatus: 'saving' });
     try {
       const state = useStore.getState();
-      const payload = {
-        branches: state.branches,
-        articles: state.articles,
-        updated_at: new Date().toISOString()
-      };
+      
+      let finalBranches = state.branches;
+      let finalArticles = state.articles;
+
       if (supabase) {
+        // Fetch current cloud state to do a smart 3-way merge!
+        const { data, error: fetchError } = await supabase
+          .from('layout_state')
+          .select('state')
+          .eq('id', 'default-layout')
+          .single();
+          
+        if (!fetchError && data?.state) {
+          const cloudState = data.state;
+          const baseline = baselineState || { branches: [], articles: [] };
+          
+          finalBranches = threeWayMerge(baseline.branches, cloudState.branches || [], state.branches);
+          finalArticles = threeWayMerge(baseline.articles, cloudState.articles || [], state.articles);
+        }
+
+        const payload = {
+          branches: finalBranches,
+          articles: finalArticles,
+          updated_at: new Date().toISOString()
+        };
+
         const { error } = await supabase
           .from('layout_state')
           .upsert({ id: 'default-layout', state: payload });
+          
         if (error) throw error;
-        set({ syncStatus: 'saved' });
+        
+        // Update baseline after successful save
+        baselineState = JSON.parse(JSON.stringify({ branches: finalBranches, articles: finalArticles }));
+        
+        // Also update local store with merged data in case there were cloud changes we integrated
+        set({ syncStatus: 'saved', branches: finalBranches, articles: finalArticles });
       } else {
         set({ syncStatus: 'error' });
       }
@@ -588,9 +619,14 @@ export const useStore = create<WMSStore>()(
           .single();
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
         if (data && data.state) {
+          const loadedBranches = data.state.branches || [];
+          const loadedArticles = data.state.articles || [];
+          
+          baselineState = JSON.parse(JSON.stringify({ branches: loadedBranches, articles: loadedArticles }));
+          
           set({ 
-            branches: data.state.branches || [],
-            articles: data.state.articles || []
+            branches: loadedBranches,
+            articles: loadedArticles
           });
         }
       }

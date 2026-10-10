@@ -98,7 +98,7 @@ export const LayoutEditor: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: window.innerWidth - 384, height: window.innerHeight });
   const [stageScale, setStageScale] = useState(window.innerWidth < 768 ? 0.3 : 1);
-  const [stagePos, setStagePos] = useState({ x: window.innerWidth < 768 ? 20 : 50, y: 50 }); // Start slightly offset to see room border
+  const [stagePos, setStagePos] = useState({ x: window.innerWidth < 768 ? 20 : 50, y: window.innerWidth < 768 ? 140 : 50 }); // Start slightly offset to see room border and clear mobile toolbar
   const [hasAutoZoomedInit, setHasAutoZoomedInit] = useState(false);
   const [selectionRect, setSelectionRect] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
 

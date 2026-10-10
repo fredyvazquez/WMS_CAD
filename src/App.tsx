@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
@@ -94,6 +94,53 @@ function App() {
 
   const [passwordInput, setPasswordInput] = useState('');
   const [isRackPanelMinimized, setIsRackPanelMinimized] = useState(false);
+
+  const lastSyncStateRef = useRef<string>('');
+  const isSyncingRef = useRef<boolean>(false);
+
+  // Auto-save & Auto-load hook
+  useEffect(() => {
+    // Initial load
+    isSyncingRef.current = true;
+    loadFromCloud().then(() => {
+      lastSyncStateRef.current = JSON.stringify({
+         branches: useStore.getState().branches,
+         articles: useStore.getState().articles
+      });
+      isSyncingRef.current = false;
+    }).catch(() => {
+      isSyncingRef.current = false;
+    });
+
+    const intervalId = setInterval(async () => {
+      if (isSyncingRef.current || useStore.getState().syncStatus === 'saving') return;
+      
+      isSyncingRef.current = true;
+      try {
+        const currentState = JSON.stringify({
+           branches: useStore.getState().branches,
+           articles: useStore.getState().articles
+        });
+
+        if (currentState !== lastSyncStateRef.current) {
+          // Local changes detected, save to cloud
+          await saveToCloud();
+          lastSyncStateRef.current = currentState;
+        } else {
+          // No local changes, safe to pull from cloud
+          await loadFromCloud();
+          lastSyncStateRef.current = JSON.stringify({
+             branches: useStore.getState().branches,
+             articles: useStore.getState().articles
+          });
+        }
+      } finally {
+        isSyncingRef.current = false;
+      }
+    }, 2500); // 2.5 seconds sync interval
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Ensure activeRoomId belongs to the current activeLevel (MUST BE BEFORE EARLY RETURN)
   useEffect(() => {
@@ -621,10 +668,10 @@ function App() {
                   )}
                 </div>
                 {/* Right Side Controls */}
-                <div className="flex gap-2 pointer-events-auto w-full md:w-auto justify-between md:justify-end flex-wrap">
+                <div className="flex gap-2 pointer-events-auto w-full md:w-auto flex-wrap md:flex-nowrap items-center">
                   {!isVentas && (
                     <select 
-                      className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                      className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none cursor-pointer flex-1 min-w-[130px] md:flex-none"
                       value={viewMode}
                       onChange={(e) => setViewMode(e.target.value as any)}
                     >
@@ -636,7 +683,7 @@ function App() {
                     </select>
                   )}
                   <select 
-                    className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 text-sm font-bold text-slate-700 outline-none cursor-pointer flex-1 md:flex-none"
+                    className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 text-xs md:text-sm font-bold text-slate-700 outline-none cursor-pointer flex-1 min-w-[100px] md:flex-none"
                     value={activeLevel || 0}
                     onChange={(e) => setActiveLevel(Number(e.target.value))}
                   >
@@ -646,13 +693,13 @@ function App() {
                   </select>
 
                   {/* Search Bar */}
-                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 px-2 md:px-4 flex items-center flex-1 min-w-0">
-                    <Search size={18} className="text-slate-400 mr-1 md:mr-2 flex-shrink-0" />
+                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 flex items-center flex-1 min-w-[120px] md:w-auto">
+                    <Search size={16} className="text-slate-400 mr-1 flex-shrink-0" />
                     <input 
                       id="main-search-input"
                       type="text" 
                       placeholder="Buscar Clave o Desc..."
-                      className="bg-transparent border-none outline-none text-sm w-full min-w-0"
+                      className="bg-transparent border-none outline-none text-xs md:text-sm w-full min-w-0"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -718,32 +765,32 @@ function App() {
             </div>
             
             <div className="bg-white shadow rounded-lg border border-slate-200 overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse min-w-[600px]">
+              <table className="w-full text-left border-collapse min-w-[500px]">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
-                    <th className="p-3 font-semibold text-sm">Clave</th>
-                    <th className="p-3 font-semibold text-sm">Descripción</th>
-                    <th className="p-3 font-semibold text-sm">Bodega León</th>
-                    <th className="p-3 font-semibold text-sm">Celaya</th>
-                    <th className="p-3 font-semibold text-sm">Estado</th>
+                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Clave</th>
+                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Descripción</th>
+                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Bodega León</th>
+                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Celaya</th>
+                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {!(Array.isArray(articles) && articles.length > 0) ? (
                     <tr>
-                      <td colSpan={5} className="p-4 text-center text-slate-500">
+                      <td colSpan={5} className="p-4 text-center text-slate-500 text-sm">
                         No hay artículos cargados. Importe un archivo Excel.
                       </td>
                     </tr>
                   ) : (
                     articles.slice(0, 100).map((art: any) => (
                       <tr key={String(art?.id || Math.random())} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-3 text-sm">{String(art?.id || '')}</td>
-                        <td className="p-3 text-sm truncate max-w-xs">{String(art?.description || '')}</td>
-                        <td className="p-3 text-sm">{String(art?.stock?.['BODEGA LEON'] || 0)}</td>
-                        <td className="p-3 text-sm">{String(art?.stock?.['CELAYA'] || 0)}</td>
-                        <td className="p-3 text-sm">
-                           <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.id || '')}</td>
+                        <td className="p-2 md:p-3 text-xs md:text-sm truncate max-w-[150px] md:max-w-xs">{String(art?.description || '')}</td>
+                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.stock?.['BODEGA LEON'] || 0)}</td>
+                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.stock?.['CELAYA'] || 0)}</td>
+                        <td className="p-2 md:p-3 text-xs md:text-sm">
+                           <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-[10px] md:text-xs">
                              {String(art?.status || 'N/A')}
                            </span>
                         </td>
