@@ -9,6 +9,8 @@ interface AnalyzerState {
   cartItems: CartItem[];
   providerConstraints: Record<string, ProviderConstraint>;
   syncStatus: 'idle' | 'saving' | 'saved' | 'error';
+  periodDays: number;
+  setPeriodDays: (days: number) => void;
   setInventoryRecords: (records: InventoryRecord[]) => void;
   updatePhysicalStock: (id: string, stock: number) => void;
   updateLeadTime: (id: string, leadTimeDays: number) => void;
@@ -28,6 +30,18 @@ export const useAnalyzerStore = create<AnalyzerState>()(
       cartItems: [],
       providerConstraints: {},
       syncStatus: 'idle',
+      periodDays: 30,
+
+      setPeriodDays: (days: number) => {
+        const validDays = Math.max(1, days);
+        set((state) => ({
+          periodDays: validDays,
+          inventoryRecords: state.inventoryRecords.map((r) => {
+            const metrics = calculateInventoryMetrics(r.exits, r.leadTimeDays, validDays);
+            return { ...r, ...metrics };
+          }),
+        }));
+      },
       
       setInventoryRecords: (records) => set({ inventoryRecords: records }),
       
@@ -40,10 +54,11 @@ export const useAnalyzerStore = create<AnalyzerState>()(
       },
       
       updateLeadTime: (id, leadTimeDays) => {
+        const currentPeriod = get().periodDays || 30;
         set((state) => ({
           inventoryRecords: state.inventoryRecords.map((r) => {
             if (r.id === id) {
-              const metrics = calculateInventoryMetrics(r.exits, leadTimeDays);
+              const metrics = calculateInventoryMetrics(r.exits, leadTimeDays, currentPeriod);
               return { ...r, leadTimeDays, ...metrics };
             }
             return r;
@@ -111,11 +126,13 @@ export const useAnalyzerStore = create<AnalyzerState>()(
         entries.forEach(row => processRow(row, false, true, false));
         exits.forEach(row => processRow(row, false, false, true));
 
+        const currentPeriod = get().periodDays || 30;
+
         // Compute metrics and ABC
         let finalRecords = Array.from(recordsMap.values()).map(rec => {
           rec.theoreticalStock = computeTheoreticalStock(rec.initialStock, rec.entries, rec.exits);
           rec.rotation = rec.theoreticalStock > 0 ? rec.exits / rec.theoreticalStock : rec.exits;
-          const metrics = calculateInventoryMetrics(rec.exits, rec.leadTimeDays);
+          const metrics = calculateInventoryMetrics(rec.exits, rec.leadTimeDays, currentPeriod);
           return { ...rec, ...metrics };
         });
         
@@ -160,6 +177,7 @@ export const useAnalyzerStore = create<AnalyzerState>()(
             inventoryRecords: state.inventoryRecords,
             cartItems: state.cartItems,
             providerConstraints: state.providerConstraints,
+            periodDays: state.periodDays,
             updated_at: new Date().toISOString()
           };
           if (supabase) {
@@ -190,7 +208,8 @@ export const useAnalyzerStore = create<AnalyzerState>()(
               set({ 
                 inventoryRecords: data.state.inventoryRecords || [],
                 cartItems: data.state.cartItems || [],
-                providerConstraints: data.state.providerConstraints || {}
+                providerConstraints: data.state.providerConstraints || {},
+                periodDays: data.state.periodDays || 30
               });
             }
           }

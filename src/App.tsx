@@ -1,14 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { LayoutEditor } from './components/LayoutEditor';
 import { RackFrontalView } from './components/RackFrontalView';
 import { InventoryAnalyzer } from './components/InventoryAnalyzer';
 import { InventoryList } from './components/InventoryList';
+import { CameraScanner } from './components/CameraScanner';
 import { useStore } from './store/useStore';
-import { Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, X, Activity, User, Copy, List } from 'lucide-react';
+import { initRealtimeSync } from './lib/realtime';
+import { 
+  Layers, Search, Package, Map, Lock, Unlock, Trash2, CloudUpload, CloudDownload, 
+  X, Activity, User, Copy, List, Camera, RefreshCw, ChevronLeft, ChevronRight, 
+  ChevronsLeft, ChevronsRight, Loader2, Filter, StickyNote 
+} from 'lucide-react';
 
 function App() {
   const [view, setView] = useState<'LAYOUT' | 'DATA' | 'ANALYZER' | 'INVENTORY'>('LAYOUT');
   const [showPanel, setShowPanel] = useState(window.innerWidth >= 768);
+  const [showGlobalScanner, setShowGlobalScanner] = useState(false);
   const articles = useStore(state => state.articles);
   const branches = useStore(state => state.branches);
   const activeBranchId = useStore(state => state.activeBranchId);
@@ -44,6 +51,73 @@ function App() {
   const userBranchScope = useStore(state => state.userBranchScope);
   const setUserBranchScope = useStore(state => state.setUserBranchScope);
   
+  // Articles view state (search, pagination, filters, loading)
+  const [articleSearch, setArticleSearch] = useState('');
+  const [articleStatusFilter, setArticleStatusFilter] = useState('ALL');
+  const [articlePage, setArticlePage] = useState(1);
+  const [articlePageSize, setArticlePageSize] = useState(50);
+  const [isImportingExcel, setIsImportingExcel] = useState(false);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+
+  const filteredArticles = useMemo(() => {
+    if (!Array.isArray(articles)) return [];
+    const q = articleSearch.trim().toLowerCase();
+    return articles.filter(a => {
+      if (!a) return false;
+      if (articleStatusFilter === 'WITH_STOCK') {
+        const hasStock = a.stock && Object.keys(a.stock).some(k => (a.stock[k] || 0) > 0);
+        if (!hasStock) return false;
+      } else if (articleStatusFilter !== 'ALL' && a.status !== articleStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        (a.id && a.id.toLowerCase().includes(q)) ||
+        (a.description && a.description.toLowerCase().includes(q)) ||
+        (a.category && a.category.toLowerCase().includes(q)) ||
+        (a.provider && a.provider.toLowerCase().includes(q))
+      );
+    });
+  }, [articles, articleSearch, articleStatusFilter]);
+
+  const totalArticlePages = Math.max(1, Math.ceil(filteredArticles.length / articlePageSize));
+
+  const paginatedArticles = useMemo(() => {
+    const start = (articlePage - 1) * articlePageSize;
+    return filteredArticles.slice(start, start + articlePageSize);
+  }, [filteredArticles, articlePage, articlePageSize]);
+
+  useEffect(() => {
+    setArticlePage(1);
+  }, [articleSearch, articleStatusFilter, articlePageSize]);
+
+  const handleReloadCatalog = async () => {
+    setIsLoadingCatalog(true);
+    try {
+      await useStore.getState().loadCatalog();
+      alert(`¡Catálogo LUZ recargado con éxito! Se tienen ${useStore.getState().articles.length.toLocaleString()} artículos activos.`);
+    } catch {
+      alert('Error al recargar el catálogo.');
+    } finally {
+      setIsLoadingCatalog(false);
+    }
+  };
+
+  const handleExcelImport = async (file: File) => {
+    setIsImportingExcel(true);
+    try {
+      const { parseExcelData } = await import('./utils/excelParser');
+      const data = await parseExcelData(file);
+      useStore.getState().setArticles(data);
+      alert(`¡Excel importado con éxito! Se cargaron ${data.length.toLocaleString()} artículos.`);
+    } catch (err: any) {
+      console.error(err);
+      alert('Error al importar Excel: ' + (err?.message || 'Archivo no compatible'));
+    } finally {
+      setIsImportingExcel(false);
+    }
+  };
+
   const handleLogin = () => {
     const pw = passwordInput.toLowerCase().trim();
     if (pw === 'admin123') {
@@ -98,48 +172,54 @@ function App() {
   const lastSyncStateRef = useRef<string>('');
   const isSyncingRef = useRef<boolean>(false);
 
-  // Auto-save & Auto-load hook
+  // Realtime WebSocket & Cloud Synchronization Hook
   useEffect(() => {
-    // Initial load
+    // 1. Initial load: master catalog + cloud baseline
     isSyncingRef.current = true;
-    loadFromCloud().then(() => {
+    useStore.getState().loadCatalog().then(() => {
+      return loadFromCloud();
+    }).then(() => {
       lastSyncStateRef.current = JSON.stringify({
          branches: useStore.getState().branches,
-         articles: useStore.getState().articles
+         articlesCount: useStore.getState().articles.length
       });
       isSyncingRef.current = false;
     }).catch(() => {
       isSyncingRef.current = false;
     });
 
-    const intervalId = setInterval(async () => {
-      if (isSyncingRef.current || useStore.getState().syncStatus === 'saving') return;
-      
-      isSyncingRef.current = true;
-      try {
-        const currentState = JSON.stringify({
-           branches: useStore.getState().branches,
-           articles: useStore.getState().articles
-        });
+    // 2. Initialize Realtime WebSocket connection (instant < 100ms sync across devices)
+    initRealtimeSync();
 
-        if (currentState !== lastSyncStateRef.current) {
-          // Local changes detected, save to cloud
-          await saveToCloud();
-          lastSyncStateRef.current = currentState;
-        } else {
-          // No local changes, safe to pull from cloud
-          await loadFromCloud();
-          lastSyncStateRef.current = JSON.stringify({
-             branches: useStore.getState().branches,
-             articles: useStore.getState().articles
-          });
+    // 3. Immediately flush unsaved changes to cloud when app is minimized or phone is locked
+    const handleVisibilityChange = () => {
+      const store = useStore.getState();
+      if (document.visibilityState === 'hidden') {
+        if (store.hasPendingLocalChanges && store.syncStatus !== 'saving') {
+          console.log('⚡ [App] Guardando cambios pendientes al salir de la pantalla...');
+          store.saveToCloud();
         }
-      } finally {
-        isSyncingRef.current = false;
+      } else if (document.visibilityState === 'visible') {
+        if (!store.hasPendingLocalChanges && store.syncStatus !== 'saving') {
+          console.log('⚡ [App] Aplicación en primer plano, sincronizando...');
+          store.loadFromCloud();
+        }
       }
-    }, 2500); // 2.5 seconds sync interval
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    return () => clearInterval(intervalId);
+    // 4. Passive safety interval (every 30s, ONLY pulls if NO local changes are pending)
+    const backupIntervalId = setInterval(() => {
+      const store = useStore.getState();
+      if (!store.hasPendingLocalChanges && store.syncStatus !== 'saving') {
+        store.loadFromCloud();
+      }
+    }, 30000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(backupIntervalId);
+    };
   }, []);
 
   // Ensure activeRoomId belongs to the current activeLevel (MUST BE BEFORE EARLY RETURN)
@@ -458,6 +538,19 @@ function App() {
                              <span className="text-xs text-slate-400">Si lo dejas vacío, se coloreará según estatus o búsqueda.</span>
                            </div>
                         </div>
+                        <div>
+                          <label className="block text-slate-500 mb-1 font-semibold flex items-center gap-1">
+                            <StickyNote size={12} className="text-amber-600" />
+                            Notas del Rack
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Ej. Mercancía pesada, área temporal..."
+                            className="w-full p-2 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-amber-500"
+                            value={selectedData.notes || ''}
+                            onChange={e => updateRackProperties(selectedData.id, { notes: e.target.value })}
+                          />
+                        </div>
                       </div>
                     </div>
                   );
@@ -607,23 +700,42 @@ function App() {
                     </div>
                     {!isRackPanelMinimized && (
                       <div className="p-2 md:p-3 overflow-y-auto flex-1 space-y-1.5 bg-slate-50">
+                        {rack.notes && (
+                          <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs mb-1.5 flex items-start gap-1.5 shadow-sm">
+                            <StickyNote size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="font-bold block text-[10px] text-amber-800">Nota del Rack:</span>
+                              <span className="text-[11px] leading-tight break-words">{rack.notes}</span>
+                            </div>
+                          </div>
+                        )}
                         {codes.size === 0 ? (
                           <div className="text-sm text-slate-400 italic text-center mt-2">Rack vacío</div>
                         ) : (
                           Array.from(codes).map(code => {
                             const isMatch = searchQuery && code.toLowerCase().includes(searchQuery.toLowerCase());
                             return (
-                              <button 
-                                key={code} 
-                                className={`w-full text-left text-xs md:text-sm border px-2 py-1 rounded md:rounded-lg font-mono shadow-sm truncate cursor-pointer transition-colors ${isMatch ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200'}`}
-                                onClick={() => { 
-                                  setSearchQuery(code);
-                                  useStore.getState().setActiveRack(rack.id); 
-                                }}
-                                title="Abrir vista frontal"
-                              >
-                                {code}
-                              </button>
+                              (() => {
+                                const matchedItemNote = (rack.cells || []).flatMap((c: any) => c.items || []).find((i: any) => i.articleId === code && i.notes)?.notes;
+                                return (
+                                  <button 
+                                    key={code} 
+                                    className={`w-full text-left text-xs md:text-sm border px-2 py-1 rounded md:rounded-lg font-mono shadow-sm cursor-pointer transition-colors flex items-center justify-between gap-1 ${isMatch ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-200'}`}
+                                    onClick={() => { 
+                                      setSearchQuery(code);
+                                      useStore.getState().setActiveRack(rack.id); 
+                                    }}
+                                    title="Abrir vista frontal"
+                                  >
+                                    <span className="truncate">{code}</span>
+                                    {matchedItemNote && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-sans font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1 py-0.2 rounded truncate max-w-[100px]" title={matchedItemNote}>
+                                        <StickyNote size={8} /> {matchedItemNote}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })()
                             );
                           })
                         )}
@@ -693,8 +805,8 @@ function App() {
                   </select>
 
                   {/* Search Bar */}
-                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 flex items-center flex-1 min-w-[120px] md:w-auto">
-                    <Search size={16} className="text-slate-400 mr-1 flex-shrink-0" />
+                  <div className="bg-white/90 backdrop-blur shadow-md rounded-lg p-2 flex items-center flex-1 min-w-[140px] md:w-auto gap-1">
+                    <Search size={16} className="text-slate-400 flex-shrink-0" />
                     <input 
                       id="main-search-input"
                       type="text" 
@@ -703,6 +815,22 @@ function App() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
+                    {searchQuery && (
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                        title="Limpiar búsqueda"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowGlobalScanner(true)}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors flex-shrink-0"
+                      title="Escanear código de barras con cámara (Code 128)"
+                    >
+                      <Camera size={16} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -721,15 +849,31 @@ function App() {
             </div>
           </>
         ) : view === 'DATA' ? (
-          <div className="p-4 md:p-8 w-full bg-slate-50 overflow-auto">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-              <h1 className="text-xl md:text-2xl font-bold">Registro de Artículos</h1>
-              <div className="flex flex-wrap gap-2 items-center">
-                <span className="hidden md:inline-block text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full shadow-sm border border-emerald-200">
-                  ✅ Activo y Memoria Lista
-                </span>
+          <div className="p-4 md:p-6 w-full bg-slate-50 overflow-auto flex flex-col gap-4">
+            {/* Top Bar: Title & Actions */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div>
+                <h1 className="text-xl md:text-2xl font-bold text-slate-800">Catálogo de Artículos</h1>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                  {articles.length.toLocaleString()} artículos registrados en el catálogo maestro
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center w-full lg:w-auto">
+                {/* Reload Master Catalog Button */}
+                <button
+                  type="button"
+                  disabled={isLoadingCatalog}
+                  onClick={handleReloadCatalog}
+                  className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs md:text-sm flex items-center gap-2 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+                  title="Cargar el catálogo completo de 57,198 artículos de LUZ"
+                >
+                  <RefreshCw size={16} className={isLoadingCatalog ? 'animate-spin' : ''} />
+                  {isLoadingCatalog ? 'Cargando Catálogo...' : 'Recargar Catálogo LUZ (57,198)'}
+                </button>
+
+                {/* Cloud Backup Button */}
                 <button 
-                  className={`px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium transition-colors ${useStore.getState().syncStatus === 'saving' ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                  className={`px-3.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-xs md:text-sm font-medium transition-colors ${useStore.getState().syncStatus === 'saving' ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}
                   onClick={() => {
                     useStore.getState().saveToCloud().then(() => {
                       if (useStore.getState().syncStatus === 'saved') {
@@ -740,70 +884,239 @@ function App() {
                     });
                   }}
                 >
-                  <CloudUpload size={18} /> 
+                  <CloudUpload size={16} /> 
                   {useStore.getState().syncStatus === 'saving' ? 'Subiendo...' : 'Respaldar en la Nube'}
                 </button>
-                <label className="bg-blue-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-blue-700 text-sm md:text-base font-medium">
-                  Importar Excel
+
+                {/* Import Excel Button */}
+                <label className={`px-3.5 py-2 rounded-lg text-xs md:text-sm font-medium flex items-center gap-2 shadow-sm transition-colors cursor-pointer ${isImportingExcel ? 'bg-slate-300 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                  {isImportingExcel ? <Loader2 size={16} className="animate-spin" /> : <List size={16} />}
+                  {isImportingExcel ? 'Procesando Excel...' : 'Importar Excel'}
                   <input 
                     type="file" 
                     accept=".xlsx, .xls, .csv" 
+                    disabled={isImportingExcel}
                     className="hidden" 
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        import('./utils/excelParser').then(async ({ parseExcelData }) => {
-                          const data = await parseExcelData(file);
-                          useStore.getState().setArticles(data);
-                          alert('¡Excel importado con éxito! Tus artículos ya están listos en la memoria para asignarlos en el Mapa 2D.');
-                        });
+                        await handleExcelImport(file);
+                        e.target.value = '';
                       }
                     }} 
                   />
                 </label>
               </div>
             </div>
-            
-            <div className="bg-white shadow rounded-lg border border-slate-200 overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse min-w-[500px]">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200">
-                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Clave</th>
-                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Descripción</th>
-                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Bodega León</th>
-                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Celaya</th>
-                    <th className="p-2 md:p-3 font-semibold text-xs md:text-sm">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!(Array.isArray(articles) && articles.length > 0) ? (
+
+            {/* Filter & Search Bar */}
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div className="relative w-full sm:w-96">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código, descripción, proveedor..."
+                  value={articleSearch}
+                  onChange={(e) => setArticleSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-xs md:text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {articleSearch && (
+                  <button 
+                    onClick={() => setArticleSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                {/* Status Filter */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <Filter size={14} className="text-slate-400" />
+                  <select
+                    value={articleStatusFilter}
+                    onChange={(e) => setArticleStatusFilter(e.target.value)}
+                    className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="ALL">Todos los estados</option>
+                    <option value="ACTIVE">Activos</option>
+                    <option value="WITH_STOCK">Solo con existencia (&gt; 0)</option>
+                    <option value="OFFLINE">Descontinuados</option>
+                    <option value="SLOW">Lento movimiento</option>
+                    <option value="DAMAGED">Dañados</option>
+                  </select>
+                </div>
+
+                {/* Page Size Selector */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <span className="hidden md:inline">Filas:</span>
+                  <select
+                    value={articlePageSize}
+                    onChange={(e) => setArticlePageSize(Number(e.target.value))}
+                    className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Container */}
+            <div className="bg-white shadow rounded-xl border border-slate-200 overflow-hidden flex flex-col">
+              <div className="overflow-x-auto w-full max-h-[62vh]">
+                <table className="w-full text-left border-collapse min-w-[750px]">
+                  <thead className="sticky top-0 bg-slate-100 z-10 border-b border-slate-200 shadow-xs">
                     <tr>
-                      <td colSpan={5} className="p-4 text-center text-slate-500 text-sm">
-                        No hay artículos cargados. Importe un archivo Excel.
-                      </td>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-36">Clave</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700">Descripción</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-36 hidden md:table-cell">Categoría</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-28 hidden lg:table-cell">Proveedor</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-24 text-right">León</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-24 text-right">Celaya</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-24 text-right hidden sm:table-cell">Querétaro</th>
+                      <th className="p-3 font-semibold text-xs md:text-sm text-slate-700 w-24 text-center">Estado</th>
                     </tr>
-                  ) : (
-                    articles.slice(0, 100).map((art: any) => (
-                      <tr key={String(art?.id || Math.random())} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.id || '')}</td>
-                        <td className="p-2 md:p-3 text-xs md:text-sm truncate max-w-[150px] md:max-w-xs">{String(art?.description || '')}</td>
-                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.stock?.['BODEGA LEON'] || 0)}</td>
-                        <td className="p-2 md:p-3 text-xs md:text-sm">{String(art?.stock?.['CELAYA'] || 0)}</td>
-                        <td className="p-2 md:p-3 text-xs md:text-sm">
-                           <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-[10px] md:text-xs">
-                             {String(art?.status || 'N/A')}
-                           </span>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedArticles.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-500 text-sm">
+                          {articles.length === 0 ? (
+                            <div className="flex flex-col items-center gap-3">
+                              <Package size={36} className="text-slate-300" />
+                              <p className="font-medium text-slate-600">No hay artículos cargados en memoria.</p>
+                              <button
+                                type="button"
+                                onClick={handleReloadCatalog}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-sm"
+                              >
+                                Cargar Catálogo Maestro LUZ (57,198 artículos)
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="italic">No se encontraron artículos que coincidan con la búsqueda o filtro.</p>
+                          )}
                         </td>
                       </tr>
-                    ))
+                    ) : (
+                      paginatedArticles.map((art: any) => {
+                        const leonStock = Number(art?.stock?.['LEON'] || art?.stock?.['BODEGA LEON'] || 0);
+                        const celayaStock = Number(art?.stock?.['CELAYA'] || 0);
+                        const qroStock = Number(art?.stock?.['QRO'] || art?.stock?.['BODEGA QRO'] || art?.stock?.['QUERETARO'] || 0);
+                        const status = art?.status || 'ACTIVE';
+
+                        return (
+                          <tr key={String(art?.id || Math.random())} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-2.5 md:p-3 text-xs md:text-sm font-mono font-bold text-slate-900">
+                              {String(art?.id || '')}
+                            </td>
+                            <td className="p-2.5 md:p-3 text-xs md:text-sm text-slate-800 font-medium">
+                              {String(art?.description || art?.id || '-')}
+                            </td>
+                            <td className="p-2.5 md:p-3 text-xs text-slate-500 hidden md:table-cell truncate max-w-[140px]">
+                              {art?.category || '-'}
+                            </td>
+                            <td className="p-2.5 md:p-3 text-xs text-slate-500 hidden lg:table-cell">
+                              {art?.provider || '-'}
+                            </td>
+                            <td className={`p-2.5 md:p-3 text-xs md:text-sm text-right font-medium ${leonStock > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                              {leonStock}
+                            </td>
+                            <td className={`p-2.5 md:p-3 text-xs md:text-sm text-right font-medium ${celayaStock > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                              {celayaStock}
+                            </td>
+                            <td className={`p-2.5 md:p-3 text-xs md:text-sm text-right font-medium hidden sm:table-cell ${qroStock > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                              {qroStock}
+                            </td>
+                            <td className="p-2.5 md:p-3 text-xs text-center">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                status === 'OFFLINE' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
+                                status === 'SLOW' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                status === 'DAMAGED' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
+                                {status === 'ACTIVE' ? 'Activo' : status === 'OFFLINE' ? 'Descontinuado' : status === 'SLOW' ? 'Lento' : status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Footer */}
+              <div className="bg-slate-50 border-t border-slate-200 p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                <div>
+                  Mostrando{' '}
+                  <span className="font-semibold text-slate-800">
+                    {filteredArticles.length === 0 ? 0 : (articlePage - 1) * articlePageSize + 1}
+                  </span>
+                  {' '}-{' '}
+                  <span className="font-semibold text-slate-800">
+                    {Math.min(articlePage * articlePageSize, filteredArticles.length)}
+                  </span>
+                  {' '}de{' '}
+                  <span className="font-semibold text-slate-800">
+                    {filteredArticles.length.toLocaleString()}
+                  </span>
+                  {' '}artículos
+                  {filteredArticles.length !== articles.length && (
+                    <span className="text-slate-400 ml-1">
+                      (filtrados de {articles.length.toLocaleString()} totales)
+                    </span>
                   )}
-                </tbody>
-              </table>
-              {(Array.isArray(articles) && articles.length > 100) && (
-                <div className="p-3 text-center text-sm text-slate-500">
-                  Mostrando 100 de {articles.length} artículos...
                 </div>
-              )}
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={articlePage <= 1}
+                    onClick={() => setArticlePage(1)}
+                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                    title="Primera página"
+                  >
+                    <ChevronsLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={articlePage <= 1}
+                    onClick={() => setArticlePage(prev => Math.max(1, prev - 1))}
+                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                    title="Página anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  
+                  <span className="px-3 py-1 font-semibold text-slate-800 bg-white border border-slate-200 rounded-md">
+                    {articlePage} / {totalArticlePages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={articlePage >= totalArticlePages}
+                    onClick={() => setArticlePage(prev => Math.min(totalArticlePages, prev + 1))}
+                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                    title="Página siguiente"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={articlePage >= totalArticlePages}
+                    onClick={() => setArticlePage(totalArticlePages)}
+                    className="p-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 cursor-pointer"
+                    title="Última página"
+                  >
+                    <ChevronsRight size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : view === 'INVENTORY' ? (
@@ -813,6 +1126,16 @@ function App() {
         ) : null}
       </div>
       <RackFrontalView />
+      {showGlobalScanner && (
+        <CameraScanner
+          title="Buscar Artículo por Código de Barras"
+          onScan={(code) => {
+            setSearchQuery(code);
+            setShowGlobalScanner(false);
+          }}
+          onClose={() => setShowGlobalScanner(false)}
+        />
+      )}
     </div>
   );
 }

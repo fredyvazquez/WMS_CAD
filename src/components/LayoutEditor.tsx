@@ -21,6 +21,18 @@ export const LayoutEditor: React.FC = () => {
     return inventoryRecords.reduce((max, r) => Math.max(max, r.exits || 0), 0);
   }, [inventoryRecords]);
 
+  const articleMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!articles) return map;
+    for (let i = 0; i < articles.length; i++) {
+      const art = articles[i];
+      if (art && art.id) {
+        map.set(art.id.trim().toUpperCase(), art);
+      }
+    }
+    return map;
+  }, [articles]);
+
   const getRackStatusColor = (rack: any) => {
     if (selectedShapeIds.includes(rack.id)) return '#3b82f6'; // Selected Blue
     if (!rack.cells || rack.cells.length === 0) {
@@ -49,16 +61,22 @@ export const LayoutEditor: React.FC = () => {
             }
           }
 
-          const art = articles.find(a => a.id === item.articleId);
-          if (art) {
-            if (searchQuery && art.description && art.description.toLowerCase().includes(searchQuery.toLowerCase())) {
+          const art = articleMap.get(item.articleId?.trim().toUpperCase());
+          const isArtUnknown = !art || !art.description || art.description.trim() === '' || art.description.trim() === '-' || art.description.trim().toLowerCase() === 'desconocido';
+
+          if (searchQuery) {
+            if (item.articleId.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                (art?.description && art.description.toLowerCase().includes(searchQuery.toLowerCase()))) {
               hasMatch = true;
             }
+          }
+
+          if (isArtUnknown) {
+            hasUnknown = true;
+          } else {
             if (art.status === 'SCRAP' || art.status === 'DAMAGED') hasRed = true;
             else if (art.status === 'SLOW' || art.status === 'OFFLINE') hasYellow = true;
             else hasGreen = true;
-          } else {
-            hasUnknown = true;
           }
         }
       });
@@ -227,7 +245,7 @@ export const LayoutEditor: React.FC = () => {
             if (item.articleId && item.articleId.toLowerCase().includes(searchQuery.toLowerCase())) {
               hasMatch = true;
             }
-            const art = articles.find(a => a.id === item.articleId);
+            const art = articleMap.get(item.articleId?.trim().toUpperCase());
             if (art && art.description && art.description.toLowerCase().includes(searchQuery.toLowerCase())) {
               hasMatch = true;
             }
@@ -631,7 +649,7 @@ export const LayoutEditor: React.FC = () => {
                           height={rack.depth}
                           fill={getRackStatusColor(rack)}
                         />
-                        <Text x={5} y={5} text={rack.name} fontSize={14} fill="#ffffff" />
+                        <Text x={5} y={5} text={`${rack.name}${rack.notes ? ' 📝' : ''}`} fontSize={14} fill="#ffffff" />
                         {selectedShapeIds.includes(rack.id) && (
                           <Text x={0} y={-20} text={`L: ${Math.round(rack.width)}cm x F: ${Math.round(rack.depth)}cm | Rot: ${Math.round(rack.rotation)}°`} fontSize={12} fill="#ef4444" fontStyle="bold" />
                         )}

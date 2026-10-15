@@ -15,6 +15,7 @@ export interface CellItem {
   id: string;
   articleId: string;
   quantity: number;
+  notes?: string;
 }
 
 export interface Cell {
@@ -24,6 +25,7 @@ export interface Cell {
   articleId: string | null; // Keep for backward compatibility or simple mode
   quantity: number;
   items?: CellItem[]; // For multiple subdivisions
+  notes?: string;
 }
 
 export interface Rack {
@@ -40,6 +42,7 @@ export interface Rack {
   color?: string; // Optional custom color
   isLocked?: boolean;
   cells: Cell[];
+  notes?: string;
 }
 
 export interface Area {

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Branch, Article, LayoutState, Rack, Room, Area } from '../types';
 import { supabase } from '../lib/supabase';
 import { threeWayMerge } from '../utils/merge';
+import { broadcastLayoutUpdate } from '../lib/realtime';
 
 // Track the baseline state when we load from cloud so we can merge smartly
 let baselineState: { branches: Branch[], articles: Article[] } | null = null;
@@ -22,6 +23,7 @@ interface WMSStore extends LayoutState {
   moveShapesByDelta: (ids: string[], dx: number, dy: number) => void;
   duplicateRack: (rackId: string) => void;
   updateCellItemQuantity: (rackId: string, cellRow: number, cellCol: number, articleId: string, delta: number) => void;
+  removeCellItem: (rackId: string, cellRow: number, cellCol: number, articleId: string) => void;
   updateRackProperties: (rackId: string, updates: Partial<Rack>) => void;
   updateRackPosition: (branchId: string, roomId: string, areaId: string | null, rackId: string, x: number, y: number, rotation: number) => void;
   addRack: (branchId: string, roomId: string) => void;
@@ -43,7 +45,10 @@ interface WMSStore extends LayoutState {
   deleteRoom: (roomId: string) => void;
   saveToCloud: () => Promise<void>;
   loadFromCloud: () => Promise<void>;
+  loadCatalog: () => Promise<void>;
   syncStatus: 'idle' | 'saving' | 'saved' | 'error';
+  hasPendingLocalChanges: boolean;
+  applyRemoteUpdate: (branches: Branch[], articles?: Article[]) => void;
   searchQuery: string;
   setCurrentUserRole: (role: import('../types').UserRole) => void;
   setUserBranchScope: (branchId: string | null) => void;
@@ -83,6 +88,16 @@ const mockBranch: Branch = {
   ]
 };
 
+
+let autoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export const scheduleAutoSave = (delayMs: number = 400) => {
+  useStore.setState({ hasPendingLocalChanges: true, syncStatus: 'idle' });
+  if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+  autoSaveTimeout = setTimeout(() => {
+    useStore.getState().saveToCloud();
+  }, delayMs);
+};
 
 export const useStore = create<WMSStore>()(
   persist(
@@ -175,33 +190,66 @@ export const useStore = create<WMSStore>()(
     const newBranches = [...state.branches];
     for (const b of newBranches) {
       for (const r of b.rooms) {
-        for (const a of r.areas) {
-          const rack = a.racks.find(rk => rk.id === rackId);
-          if (rack && rack.cells) {
-            const cell = rack.cells.find(c => c.row === cellRow && c.col === cellCol);
-            if (cell && cell.items) {
-               const item = cell.items.find((i: any) => i.articleId === articleId);
-               if (item) {
-                 item.quantity = Math.max(0, (item.quantity || 0) + delta);
-                 if (item.quantity === 0) {
-                    cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
-                 }
-               }
-            }
-            return { branches: newBranches };
+        let rack = r.racks.find(rk => rk.id === rackId);
+        if (!rack) {
+          for (const a of r.areas) {
+            rack = a.racks.find(rk => rk.id === rackId);
+            if (rack) break;
           }
         }
-        const rack = r.racks.find(rk => rk.id === rackId);
         if (rack && rack.cells) {
           const cell = rack.cells.find(c => c.row === cellRow && c.col === cellCol);
-          if (cell && cell.items) {
-             const item = cell.items.find((i: any) => i.articleId === articleId);
-             if (item) {
-               item.quantity = Math.max(0, (item.quantity || 0) + delta);
-               if (item.quantity === 0) {
-                  cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
-               }
-             }
+          if (cell) {
+            if (!cell.items) {
+              cell.items = cell.articleId ? [{ id: `${Date.now()}`, articleId: cell.articleId, quantity: cell.quantity || 1 }] : [];
+            }
+            const item = cell.items.find((i: any) => i.articleId === articleId);
+            if (item) {
+              item.quantity = Math.max(0, (item.quantity || 0) + delta);
+              if (item.quantity === 0) {
+                cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
+              }
+            }
+            if (cell.items.length > 0) {
+              cell.articleId = cell.items[0].articleId;
+              cell.quantity = cell.items[0].quantity;
+            } else {
+              cell.articleId = null;
+              cell.quantity = 0;
+            }
+          }
+          return { branches: newBranches };
+        }
+      }
+    }
+    return state;
+  }),
+  removeCellItem: (rackId, cellRow, cellCol, articleId) => set((state) => {
+    const newBranches = [...state.branches];
+    for (const b of newBranches) {
+      for (const r of b.rooms) {
+        let rack = r.racks.find(rk => rk.id === rackId);
+        if (!rack) {
+          for (const a of r.areas) {
+            rack = a.racks.find(rk => rk.id === rackId);
+            if (rack) break;
+          }
+        }
+        if (rack && rack.cells) {
+          const cell = rack.cells.find(c => c.row === cellRow && c.col === cellCol);
+          if (cell) {
+            if (cell.items) {
+              cell.items = cell.items.filter((i: any) => i.articleId !== articleId);
+            }
+            scheduleAutoSave();
+            if (cell.items && cell.items.length > 0) {
+              cell.articleId = cell.items[0].articleId;
+              cell.quantity = cell.items[0].quantity;
+            } else {
+              cell.articleId = null;
+              cell.quantity = 0;
+              cell.items = [];
+            }
           }
           return { branches: newBranches };
         }
@@ -314,6 +362,7 @@ export const useStore = create<WMSStore>()(
         rows: 4, cols: 5, cells: []
       };
       room.racks.push(newRack);
+      scheduleAutoSave();
       return { branches: newBranches, selectedShapeId: newRack.id };
     }
     return state;
@@ -331,6 +380,10 @@ export const useStore = create<WMSStore>()(
         }
         if (rack) {
           Object.assign(rack, updates);
+          scheduleAutoSave();
+          if (updates.notes === undefined || updates.notes === '') {
+            delete rack.notes;
+          }
           return { branches: newBranches };
         }
       }
@@ -380,6 +433,7 @@ export const useStore = create<WMSStore>()(
           }
           cell.articleId = articleId;
           cell.quantity = quantity;
+          scheduleAutoSave();
           return { branches: newBranches };
         }
       }
@@ -405,6 +459,7 @@ export const useStore = create<WMSStore>()(
             rack.cells.push(cell);
           }
           cell.items = items;
+          scheduleAutoSave();
           // Sync backward compat
           if (items.length > 0) {
              cell.articleId = items[0].articleId;
@@ -507,6 +562,7 @@ export const useStore = create<WMSStore>()(
     return { branches: newBranches };
   }),
   deleteRack: (rackId) => set((state) => {
+    scheduleAutoSave();
     const newBranches = [...state.branches];
     for (const b of newBranches) {
       for (const r of b.rooms) {
@@ -560,6 +616,30 @@ export const useStore = create<WMSStore>()(
     return state;
   }),
   syncStatus: 'idle',
+  hasPendingLocalChanges: false,
+  applyRemoteUpdate: (remoteBranches: Branch[], remoteArticles?: Article[]) => {
+    const state = useStore.getState();
+    if (state.hasPendingLocalChanges || state.syncStatus === 'saving') {
+      console.log('⚡ [Realtime] Integrando cambios remotos recibidos vía WebSocket...');
+      const baseline = baselineState || { branches: [], articles: [] };
+      const mergedBranches = threeWayMerge(baseline.branches, remoteBranches, state.branches);
+      let mergedArticles = state.articles;
+      if (remoteArticles) {
+        mergedArticles = threeWayMerge(baseline.articles, remoteArticles, state.articles);
+      }
+      set({ branches: mergedBranches, articles: mergedArticles });
+    } else {
+      console.log('⚡ [Realtime] Aplicando estado remoto actualizado vía WebSocket.');
+      baselineState = JSON.parse(JSON.stringify({ 
+        branches: remoteBranches, 
+        articles: remoteArticles || state.articles 
+      }));
+      set({ 
+        branches: remoteBranches, 
+        articles: remoteArticles || state.articles 
+      });
+    }
+  },
   saveToCloud: async () => {
     set({ syncStatus: 'saving' });
     try {
@@ -584,9 +664,34 @@ export const useStore = create<WMSStore>()(
           finalArticles = threeWayMerge(baseline.articles, cloudState.articles || [], state.articles);
         }
 
+        // Collect article IDs that are placed in any rack
+        const placedArticleIds = new Set<string>();
+        for (const b of finalBranches) {
+          for (const r of b.rooms) {
+            const scanRacks = [...r.racks, ...r.areas.flatMap(a => a.racks)];
+            for (const rk of scanRacks) {
+              for (const c of (rk.cells || [])) {
+                if (c.articleId) placedArticleIds.add(c.articleId.trim().toUpperCase());
+                for (const it of (c.items || [])) {
+                  if (it.articleId) placedArticleIds.add(it.articleId.trim().toUpperCase());
+                }
+              }
+            }
+          }
+        }
+
+        // Only sync articles with actual stock, placements, or custom status to keep payload fast & light (<1MB)
+        const articlesToSync = finalArticles.filter(a => {
+          const upperId = a.id.trim().toUpperCase();
+          const hasStock = a.stock && Object.keys(a.stock).some(k => (a.stock[k] || 0) !== 0);
+          const isPlaced = placedArticleIds.has(upperId);
+          const hasSpecialStatus = a.status && a.status !== 'ACTIVE';
+          return hasStock || isPlaced || hasSpecialStatus;
+        });
+
         const payload = {
           branches: finalBranches,
-          articles: finalArticles,
+          articles: articlesToSync,
           updated_at: new Date().toISOString()
         };
 
@@ -599,8 +704,16 @@ export const useStore = create<WMSStore>()(
         // Update baseline after successful save
         baselineState = JSON.parse(JSON.stringify({ branches: finalBranches, articles: finalArticles }));
         
+        // Broadcast immediately over WebSockets to all other connected clients!
+        broadcastLayoutUpdate(finalBranches, articlesToSync);
+
         // Also update local store with merged data in case there were cloud changes we integrated
-        set({ syncStatus: 'saved', branches: finalBranches, articles: finalArticles });
+        set({ 
+          syncStatus: 'saved', 
+          hasPendingLocalChanges: false, 
+          branches: finalBranches, 
+          articles: finalArticles 
+        });
       } else {
         set({ syncStatus: 'error' });
       }
@@ -610,6 +723,13 @@ export const useStore = create<WMSStore>()(
     }
   },
   loadFromCloud: async () => {
+    // PROTECT LOCAL CHANGES: Never overwrite if user has pending unsaved local edits
+    const current = useStore.getState();
+    if (current.hasPendingLocalChanges || current.syncStatus === 'saving') {
+      console.log('⚡ [loadFromCloud] Protegiendo cambios locales pendientes, omitiendo sobreescritura.');
+      return;
+    }
+
     try {
       if (supabase) {
         const { data, error } = await supabase
@@ -620,22 +740,148 @@ export const useStore = create<WMSStore>()(
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
         if (data && data.state) {
           const loadedBranches = data.state.branches || [];
-          const loadedArticles = data.state.articles || [];
+          const loadedArticles: Article[] = data.state.articles || [];
+          const currentArticles = useStore.getState().articles;
           
-          baselineState = JSON.parse(JSON.stringify({ branches: loadedBranches, articles: loadedArticles }));
+          let finalArticles = currentArticles;
+          if (currentArticles.length === 0) {
+            // If memory was empty, load the master catalog and merge cloud stock
+            try {
+              let res: Response | null = null;
+              for (const p of ['/catalog.json', './catalog.json', 'catalog.json']) {
+                try {
+                  const r = await fetch(p);
+                  if (r.ok) { res = r; break; }
+                } catch { /* next */ }
+              }
+              if (res && res.ok) {
+                const catalogData: Article[] = await res.json();
+                const cloudMap = new Map(loadedArticles.map((a: Article) => [a.id.trim().toUpperCase(), a]));
+                finalArticles = catalogData.map(art => {
+                  const cloudItem = cloudMap.get(art.id.trim().toUpperCase());
+                  if (cloudItem) {
+                    return {
+                      ...art,
+                      stock: Object.keys(cloudItem.stock || {}).length > 0 ? cloudItem.stock : art.stock,
+                      status: cloudItem.status || art.status,
+                    };
+                  }
+                  return art;
+                });
+              } else {
+                finalArticles = loadedArticles;
+              }
+            } catch {
+              finalArticles = loadedArticles;
+            }
+          } else {
+            const cloudMap = new Map(loadedArticles.map((a: Article) => [a.id.trim().toUpperCase(), a]));
+            finalArticles = currentArticles.map(art => {
+              const cloudItem = cloudMap.get(art.id.trim().toUpperCase());
+              if (cloudItem) {
+                return {
+                  ...art,
+                  stock: Object.keys(cloudItem.stock || {}).length > 0 ? cloudItem.stock : art.stock,
+                  status: cloudItem.status || art.status,
+                };
+              }
+              return art;
+            });
+          }
+          
+          baselineState = JSON.parse(JSON.stringify({ branches: loadedBranches, articles: finalArticles }));
           
           set({ 
             branches: loadedBranches,
-            articles: loadedArticles
+            articles: finalArticles
           });
         }
       }
     } catch (e) {
       console.error(e);
     }
+  },
+  loadCatalog: async () => {
+    try {
+      let res: Response | null = null;
+      for (const p of ['/catalog.json', './catalog.json', 'catalog.json']) {
+        try {
+          const r = await fetch(p);
+          if (r.ok) { res = r; break; }
+        } catch { /* next */ }
+      }
+      if (res && res.ok) {
+        const data: Article[] = await res.json();
+        const current = useStore.getState().articles;
+        if (current.length === 0) {
+          set({ articles: data });
+        } else {
+          const currentMap = new Map(current.map(a => [a.id.trim().toUpperCase(), a]));
+          const merged = data.map(item => {
+            const existing = currentMap.get(item.id.trim().toUpperCase());
+            if (existing) {
+              return {
+                ...item,
+                stock: Object.keys(existing.stock || {}).length > 0 ? existing.stock : item.stock,
+                status: existing.status || item.status,
+                description: existing.description && existing.description !== '-' ? existing.description : item.description,
+              };
+            }
+            return item;
+          });
+          const dataIds = new Set(data.map(d => d.id.trim().toUpperCase()));
+          for (const curr of current) {
+            if (!dataIds.has(curr.id.trim().toUpperCase())) {
+              merged.push(curr);
+            }
+          }
+          set({ articles: merged });
+        }
+      }
+
+      // Also load default bundled layout if branches is just the empty mock
+      const currentBranches = useStore.getState().branches;
+      const isDefaultMock = currentBranches.length <= 1 && 
+        (!currentBranches[0] || (currentBranches[0].id === 'b-1' && currentBranches[0].rooms?.[0]?.name === 'Nave Principal'));
+      
+      if (isDefaultMock) {
+        let layoutRes: Response | null = null;
+        for (const lp of ['/defaultLayout.json', './defaultLayout.json', 'defaultLayout.json']) {
+          try {
+            const lr = await fetch(lp);
+            if (lr.ok) { layoutRes = lr; break; }
+          } catch { /* next */ }
+        }
+        if (layoutRes && layoutRes.ok) {
+          const layoutBranches = await layoutRes.json();
+          if (Array.isArray(layoutBranches) && layoutBranches.length > 0) {
+            set({ 
+              branches: layoutBranches,
+              activeBranchId: layoutBranches[0].id,
+              activeRoomId: layoutBranches[0].rooms?.[0]?.id || null
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('No se pudo cargar el catálogo predeterminado:', e);
+    }
   }
   }),
   {
     name: 'wms-cad-storage',
+    partialize: (state) => ({
+      branches: state.branches,
+      activeBranchId: state.activeBranchId,
+      activeRoomId: state.activeRoomId,
+      activeRackId: state.activeRackId,
+      activeLevel: state.activeLevel,
+      selectedShapeId: state.selectedShapeId,
+      selectedShapeIds: state.selectedShapeIds,
+      isEditMode: state.isEditMode,
+      currentUserRole: state.currentUserRole,
+      userBranchScope: state.userBranchScope,
+      viewMode: state.viewMode,
+    }),
   }
 ));

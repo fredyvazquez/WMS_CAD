@@ -12,9 +12,11 @@ export const computeTheoreticalStock = (initial: number, entries: number, exits:
 export const calculateInventoryMetrics = (
   exits: number,
   leadTimeDays: number,
-  periodDays: number = 30
+  periodDays: number = 30,
+  orderCycleDays: number = 30
 ) => {
-  const avgDailySales = exits / periodDays;
+  const safePeriod = periodDays > 0 ? periodDays : 30;
+  const avgDailySales = exits / safePeriod;
   const maxDailySales = avgDailySales * 1.5;
   const maxLeadTime = leadTimeDays * 1.2;
 
@@ -22,7 +24,9 @@ export const calculateInventoryMetrics = (
   if (safetyStock < 0) safetyStock = 0;
   
   const reorderPoint = (leadTimeDays * avgDailySales) + safetyStock;
-  const orderQuantity = avgDailySales * periodDays;
+  // El lote o cantidad de reposición cubre el ciclo de pedido (por defecto 30 días)
+  const safeCycle = orderCycleDays > 0 ? orderCycleDays : 30;
+  const orderQuantity = avgDailySales * safeCycle;
   const maxStock = safetyStock + orderQuantity;
   const minStock = safetyStock;
 

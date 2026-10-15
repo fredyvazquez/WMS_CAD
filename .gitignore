@@ -24,3 +24,12 @@ dist-ssr
 *.sw?
 
 .env
+
+# Android builds & binaries
+*.apk
+*.aab
+.gradle/
+android/.gradle/
+android/app/build/
+android/build/
+scratch/
